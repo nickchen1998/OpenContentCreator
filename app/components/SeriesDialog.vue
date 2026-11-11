@@ -3,7 +3,7 @@
 const open = defineModel<boolean>({ required: true })
 const props = defineProps<{ series?: Series }>()
 const emit = defineEmits<{ saved: [id: number], deleted: [] }>()
-const { accounts, accountLabel } = useLookup()
+const { accounts, account } = useLookup()
 type Candidate = InsightPost & { seriesId: number | null, seriesName: string | null }
 const PAGE_SIZE = 8
 const candidates = ref<Candidate[]>([])
@@ -87,7 +87,7 @@ async function remove() {
         </div>
         <div v-if="usedAccounts.length > 1" class="row" role="group" aria-label="帳號">
           <button type="button" class="chip" :aria-pressed="tab === 'all'" @click="go('all')">全部</button>
-          <button v-for="a in usedAccounts" :key="a.id" type="button" class="chip" :aria-pressed="tab === a.id" @click="go(a.id)">{{ PLATFORMS[a.platform].label }}</button>
+          <button v-for="a in usedAccounts" :key="a.id" type="button" class="chip" :aria-pressed="tab === a.id" @click="go(a.id)"><PlatformIcon :platform="a.platform" label /></button>
         </div>
         <!-- 貼文清單在自己的區塊裡捲動，不會把整個視窗撐長 -->
         <div ref="list" class="post-list" tabindex="0" aria-label="可以加入的貼文">
@@ -95,7 +95,7 @@ async function remove() {
             <input v-model="form.postIds" type="checkbox" :value="p.id" :disabled="locked(p)">
             <span class="col grow" style="gap: 2px">
               <span class="wrap-any">{{ p.text || '（沒有文字的貼文）' }}</span>
-              <span class="small muted">{{ accountLabel(p.accountId).split(' · ')[0] }} · {{ dayOf(p.publishedAt) }}<template v-if="locked(p)"> · 已在「{{ p.seriesName }}」</template></span>
+              <span class="small muted pf-row" style="gap: 6px"><PlatformIcon :platform="account(p.accountId)?.platform" :size="14" />{{ dayOf(p.publishedAt) }}<template v-if="locked(p)"> · 已在「{{ p.seriesName }}」</template></span>
             </span>
           </label>
           <div v-if="loading" class="empty">載入中…</div>

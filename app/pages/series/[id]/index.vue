@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 系列文的成效：合計、系列裡每則貼文、留言紀錄
 const id = Number(useRoute().params.id)
-const { accountLabel } = useLookup()
+const { accountLabel, account } = useLookup()
 const series = ref<Series>()
 const comments = ref<CommentRow[]>([])
 const missing = ref(false)
@@ -177,7 +177,7 @@ async function remove(c: CommentRow) {
         <div ref="logEl" class="comment-log fill scroll" tabindex="0" aria-label="留言紀錄">
           <div v-for="c in shown" :key="c.id" class="comment-item">
             <div class="row between" style="gap: 6px 12px">
-              <span class="small muted">{{ accountLabel(c.accountId).split(' · ')[0] }} · {{ c.author }} · {{ timeOf(c.createdAt) }}</span>
+              <span class="small muted pf-row" style="gap: 6px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="14" />{{ c.author }} · {{ timeOf(c.createdAt) }}</span>
               <span class="tag" :style="stateOf(c).style">{{ stateOf(c).label }}</span>
             </div>
             <span class="wrap-any">{{ c.text }}</span>

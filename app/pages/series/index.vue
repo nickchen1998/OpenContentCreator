@@ -26,8 +26,8 @@ const cards = computed(() => series.value.map((s) => {
     <NuxtLink v-for="s in cards" :key="s.id" :to="`/series/${s.id}`" class="series-card" :aria-label="`系列文 ${s.name}`">
       <div class="series-card-head">
         <h2 class="wrap-any">{{ s.name }}</h2>
-        <span class="row" style="gap: 4px; flex-wrap: nowrap">
-          <span v-for="p in s.platforms" :key="p" class="pl">{{ PLATFORMS[p].short }}</span>
+        <span class="row" style="gap: 8px; flex-wrap: nowrap">
+          <PlatformIcon v-for="p in s.platforms" :key="p" :platform="p" :size="18" />
         </span>
       </div>
       <div class="series-card-main">

@@ -123,7 +123,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
         <div class="row" style="font-size: 14px; color: var(--text-2)">
           <span class="tag lg" :style="projectStyle(post.projectId)">{{ projectLabel(post) }}</span>
           <span>預計 {{ fmtAt(post.scheduledAt) }}</span>
-          <span>{{ post.targets.map(t => platformLabel(t.accountId)).join('、') }}</span>
+          <span class="pf-row"><PlatformIcon v-for="t in post.targets" :key="t.id" :platform="account(t.accountId)?.platform" /></span>
           <span class="bold">{{ STATUS[post.status] }}</span>
         </div>
       </div>
@@ -180,7 +180,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
         <div class="col divided fill scroll" style="gap: 14px">
           <div v-for="t in post.targets" :key="t.id" class="col" style="gap: 10px">
             <div class="row between">
-              <h3>{{ platformLabel(t.accountId) }} 版<span class="small muted" style="font-weight: 400">　{{ account(t.accountId)?.name }}</span></h3>
+              <h3><PlatformIcon :platform="account(t.accountId)?.platform" label /> 版<span class="small muted" style="font-weight: 400">　{{ account(t.accountId)?.name }}</span></h3>
               <div class="row">
                 <button v-if="captions[t.id] !== t.caption" type="button" class="btn" @click="patchTarget(t, { caption: captions[t.id] }, '文案已儲存')">儲存</button>
                 <button type="button" class="btn outline" @click="copyCaption(t)">{{ copied === t.id ? '已複製' : '複製文字' }}</button>
@@ -197,7 +197,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
       <div class="col divided scroll" style="gap: 12px">
         <div v-for="t in post.targets" :key="t.id" class="row between gap-lg">
           <div class="col" style="flex: 1 1 200px">
-            <div class="bold">{{ platformLabel(t.accountId) }}</div>
+            <PlatformIcon class="bold" :platform="account(t.accountId)?.platform" label />
             <div v-if="t.publishedUrl" class="small bold" style="color: var(--ok)">已發文　<a :href="t.publishedUrl" target="_blank" rel="noopener noreferrer">開啟貼文</a></div>
             <div v-else class="small" style="color: var(--text-2)">尚未發文</div>
           </div>

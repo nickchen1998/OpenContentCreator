@@ -283,3 +283,11 @@ table.compact .bar-track { min-width: 70px; }
   /* 貼文頁的發文狀態：平台多的時候最多占三分之一高，其餘在裡面捲，把空間留給素材與文案 */
   .status-card { flex: 0 1 auto; min-height: 0; max-height: 34vh; }
 }
+
+/* ---- 平台商標 ---- */
+.pf { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.pf-icon { flex: none; color: var(--brand); }
+/* 深色底（選中的膠囊）上改用文字色，品牌色會看不清楚 */
+.chip[aria-pressed="true"] .pf-icon { color: currentColor; }
+.pf-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
