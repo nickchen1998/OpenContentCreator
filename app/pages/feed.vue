@@ -97,7 +97,7 @@ async function refresh() {
   </div>
 
   <div v-if="loaded && !posts.length" class="card empty">
-    還沒有貼文　<NuxtLink to="/accounts">連結帳號</NuxtLink>
+    還沒有貼文　<a href="/accounts" @click.prevent="openSetup('accounts')">連結帳號</a>
   </div>
   <div v-else class="fit-grid cols-2 fill">
     <section class="card" aria-label="貼文">

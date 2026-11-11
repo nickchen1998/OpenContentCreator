@@ -99,7 +99,7 @@ async function remove() {
             </span>
           </label>
           <div v-if="loading" class="empty">載入中…</div>
-          <div v-else-if="!candidates.length" class="empty">還沒有貼文　<NuxtLink to="/accounts">連結帳號</NuxtLink></div>
+          <div v-else-if="!candidates.length" class="empty">還沒有貼文　<a href="/accounts" @click.prevent="openSetup('accounts')">連結帳號</a></div>
         </div>
         <div v-if="pages > 1" class="row between" role="navigation" aria-label="貼文分頁">
           <button type="button" class="btn sm" :disabled="page <= 1" @click="go(null, page - 1)">上一頁</button>
