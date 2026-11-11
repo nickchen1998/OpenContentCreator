@@ -285,6 +285,8 @@ export interface RemotePostStats {
   shares?: number
   /** Threads 的轉發：不是自己的貼文，不收進來（已經收過的會刪掉） */
   repost?: boolean
+  /** 還不該出現的（YouTube 排定發布、私人的影片）：一樣不收，已經收過的會刪掉 */
+  skip?: boolean
 }
 
 /** 帳號最近的貼文，連同列表本身就附帶的數字（一個請求）。觀看、分享、收藏要另外用 fetchInsights 逐則抓 */
