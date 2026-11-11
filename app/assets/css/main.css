@@ -17,8 +17,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .shell { display: flex; flex-wrap: wrap; min-height: 100vh; }
-.side { flex: 1 1 200px; padding: 24px 16px; background: var(--card); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 24px; }
-.side .brand { font-size: 18px; font-weight: 700; padding: 0 12px; }
+.side { flex: 1 1 232px; padding: 24px 16px; background: var(--card); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 24px; }
+.side .brand { font-size: 15px; font-weight: 700; padding: 0 8px; display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; min-height: 44px; }
+.side .brand img { border-radius: 7px; flex-shrink: 0; }
+.side .brand span { white-space: nowrap; }
 .side nav { display: flex; flex-direction: column; gap: 4px; }
 .side nav a { display: flex; justify-content: space-between; padding: 11px 12px; border-radius: 8px; text-decoration: none; color: var(--text); }
 .side nav a.router-link-active { background: var(--primary-bg); color: var(--primary); font-weight: 700; }
