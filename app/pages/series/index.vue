@@ -9,6 +9,7 @@ async function load() {
   loaded.value = true
 }
 onMounted(load)
+useAutoRefresh(load)
 const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
 const cards = computed(() => series.value.map((s) => {
   const totals = totalsOf(s.posts)

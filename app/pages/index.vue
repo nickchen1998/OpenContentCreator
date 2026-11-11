@@ -24,6 +24,7 @@ async function load() {
   loaded.value = true
 }
 watch(days, load, { immediate: true })
+useAutoRefresh(load)
 
 async function sync() {
   syncing.value = true
