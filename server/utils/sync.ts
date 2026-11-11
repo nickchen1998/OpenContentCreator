@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, lt, sql } from 'drizzle-orm'
 import { accountPosts, accounts, collectionPosts, comments, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
@@ -131,6 +131,17 @@ export async function refreshExpiringTokens(limit = 20) {
  * 排程：輪詢 Threads 的新回覆（Threads 的 webhook 要過 App Review，會員自己的 App 收不到）。
  * 每次處理最久沒輪到的幾個帳號；每個帳號看最近 5 則貼文，只處理連結之後才出現、而且還沒收過的回覆。
  */
+const THREADS_PER_POLL = 6
+const THREADS_ALWAYS = 3
+/** 這一輪要檢查哪幾則：最新的 THREADS_ALWAYS 則固定看，剩下的名額由其餘貼文依輪次（每 5 分鐘加一）輪流 */
+export function pickForPoll<T>(posts: T[], round: number): T[] {
+  if (posts.length <= THREADS_PER_POLL) return posts
+  const rest = posts.slice(THREADS_ALWAYS)
+  const n = THREADS_PER_POLL - THREADS_ALWAYS
+  const start = (round * n) % rest.length
+  return [...posts.slice(0, THREADS_ALWAYS), ...Array.from({ length: n }, (_, i) => rest[(start + i) % rest.length]!)]
+}
+
 export async function pollThreads(maxConnections = 3) {
   const db = useDb()
   const due = await db.select({ connection: connections, ownerId: accounts.ownerId }).from(connections)
@@ -142,17 +153,26 @@ export async function pollThreads(maxConnections = 3) {
     await db.update(connections).set({ lastPolledAt: nowIso() }).where(eq(connections.id, connection.id))
     try {
       const token = await unseal(connection.tokenEnc)
-      const threads = await listRecentPosts('threads', token, connection.externalId, 5)
+      // 只看系列文裡的貼文（不在系列文裡的留言本來就不處理），不是「最近幾則」：舊貼文只要還在系列文裡就要一直顧到。
+      // 每輪最多 THREADS_PER_POLL 則（每則 1 個請求）：最新的幾則每輪都看，其餘的照時間輪流
+      const inSeries = await db.select({ id: accountPosts.externalId }).from(accountPosts)
+        .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
+        .where(eq(accountPosts.accountId, connection.accountId)).orderBy(desc(accountPosts.publishedAt)).limit(200)
+      const threads = pickForPoll(inSeries, Math.floor(Date.now() / 300_000))
+      if (!threads.length) continue
       // 已經收過的回覆一次查出來，不要每則回覆查一次（Free 方案每次 50 個 D1 查詢）
       const seen = new Set((await db.select({ externalId: comments.externalId }).from(comments)
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId)))
         .orderBy(sql`${comments.id} desc`).limit(500)).map(r => r.externalId))
       let boot: OwnedBoot | undefined
+      let handled = 0
       for (const thread of threads) {
         const replies = await listThreadReplies(token, thread.id)
         // 連結之前就在的舊回覆不補回，否則一連結就會對歷史留言洗一輪
         const fresh = replies.filter(r => !seen.has(r.id) && r.timestamp && new Date(r.timestamp).toISOString() > connection.createdAt).reverse()
-        for (const reply of fresh.slice(0, 5)) {
+        // 回一則 Threads 要 2 個請求，一個帳號一輪最多回 8 則，剩下的下一輪再處理
+        for (const reply of fresh.slice(0, Math.max(0, 8 - handled))) {
+          handled++
           boot ??= await loadBoot(ownerId)
           await receive(boot, 'threads', connection, {
             externalId: reply.id, senderId: reply.username, author: `@${reply.username}`, text: reply.text,
