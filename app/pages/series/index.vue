@@ -1,25 +1,24 @@
 <script setup lang="ts">
-// 系列文管理：每個系列文一張卡片，整張可以點進去設定
+// 系列文管理：每個系列文一張卡片，整張可以點，進去就是成效（設定在成效頁用視窗開）
 const { accountLabel } = useLookup()
 const series = ref<Series[]>([])
 const loaded = ref(false)
-onMounted(async () => {
+const createOpen = ref(false)
+async function load() {
   series.value = await attempt(() => api<Series[]>('/api/series')) ?? []
   loaded.value = true
-})
+}
+onMounted(load)
 const trigger = (s: Series) => (s.matchType === 'any' ? '任何留言' : `留言含「${s.keywords}」`)
 </script>
 
 <template>
   <div class="row" style="justify-content: flex-end">
-    <NuxtLink to="/series/new" class="btn primary">新增系列文</NuxtLink>
+    <button type="button" class="btn primary" @click="createOpen = true">新增系列文</button>
   </div>
 
-  <NuxtLink v-for="s in series" :key="s.id" :to="`/series/${s.id}/edit`" class="card card-link" :aria-label="`設定系列文 ${s.name}`">
-    <div class="row" style="gap: 10px">
-      <h2>{{ s.name }}</h2>
-      <span class="pill" :class="{ muted: !s.enabled || !s.replies.length }">{{ !s.replies.length ? '只看成效' : s.enabled ? '自動回覆啟用中' : '已暫停' }}</span>
-    </div>
+  <NuxtLink v-for="s in series" :key="s.id" :to="`/series/${s.id}`" class="card card-link" :aria-label="`系列文 ${s.name}`">
+    <h2>{{ s.name }}</h2>
     <div class="grid-2" style="gap: 12px 24px">
       <div class="col" style="gap: 6px">
         <span class="small bold muted">貼文</span>
@@ -38,4 +37,6 @@ const trigger = (s: Series) => (s.matchType === 'any' ? '任何留言' : `留言
     </div>
   </NuxtLink>
   <div v-if="loaded && !series.length" class="card empty">還沒有系列文</div>
+
+  <SeriesDialog v-model="createOpen" @saved="load" />
 </template>
