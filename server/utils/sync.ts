@@ -1,66 +1,63 @@
-import { and, asc, eq, gte, isNotNull, lt, ne, sql } from 'drizzle-orm'
-import { accounts, comments, connections, groups, posts, postTargets } from '../database/schema'
+import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm'
+import { accountPosts, accounts, comments, connections, groups } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
-interface SyncTarget { id: number, publishedUrl: string, externalPostId: string }
-
 /**
- * 同步一個帳號底下幾則貼文的成效：先把「貼上的發文連結」對到平台上的貼文 id（對過的會記下來），再抓 insight。
- * 每則貼文 1–3 個對外請求；對連結另外要 1 個。呼叫端要自己控制筆數（Free 方案每次 50 個對外請求）。
+ * 同步一個帳號的貼文與成效：列出最近的貼文（1 個請求，按讚與留言數跟著回來），再替最久沒更新的幾則抓 insight
+ * （觀看、分享、收藏；每則 1–2 個請求）。insightBudget 是這次最多替幾則貼文抓 insight，呼叫端用它控制請求數。
  */
-export async function syncTargets(platform: MetaPlatform, connection: Connection, targets: SyncTarget[]) {
+export async function syncAccountPosts(platform: MetaPlatform, connection: Connection, insightBudget: number) {
   const db = useDb()
-  const results: { id: number, error: string }[] = []
-  let token: string
-  let recent: RemotePost[] | undefined
+  const now = nowIso()
   try {
-    token = await unseal(connection.tokenEnc)
+    const token = await unseal(connection.tokenEnc)
+    const remote = await listPostsWithStats(platform, token, connection.externalId)
+    const known = new Map((await db.select({ externalId: accountPosts.externalId, insightsAt: accountPosts.insightsAt }).from(accountPosts)
+      .where(eq(accountPosts.accountId, connection.accountId))).map(r => [r.externalId, r.insightsAt]))
+    // 新貼文數字變動快，先抓還沒抓過的，再抓最久沒更新的；兩個月前的貼文不再更新 insight
+    const cutoff = new Date(Date.now() - 60 * 86400_000).toISOString()
+    const queue = remote.filter(p => p.publishedAt >= cutoff)
+      .sort((a, b) => (known.get(a.id) ?? '').localeCompare(known.get(b.id) ?? '') || b.publishedAt.localeCompare(a.publishedAt))
+      .slice(0, Math.max(0, insightBudget))
+    const insights = new Map<string, Partial<Metrics>>()
+    let insightError = ''
+    for (const post of queue) {
+      try {
+        insights.set(post.id, await fetchInsights(platform, token, post.id))
+      }
+      catch (e) {
+        insightError = (e as Error).message
+        // 權限不足這類錯誤每一則都會一樣，不用繼續浪費請求
+        if (/permission|\(#10\)|\(#200\)/i.test(insightError)) break
+      }
+    }
+    await batchWrites(remote.map((post) => {
+      const extra = insights.get(post.id)
+      // 只寫這次真的拿到的數字，沒拿到的保留資料庫裡的舊值
+      const metrics = Object.fromEntries(Object.entries({ likes: post.likes, comments: post.comments, shares: post.shares, ...extra }).filter(([, v]) => v !== undefined))
+      const base = { url: post.url, text: post.text, publishedAt: post.publishedAt, ...metrics, ...(extra ? { insightsAt: now } : {}) }
+      return db.insert(accountPosts).values({ accountId: connection.accountId, externalId: post.id, ...base })
+        .onConflictDoUpdate({ target: [accountPosts.accountId, accountPosts.externalId], set: base })
+    }))
+    const lastError = insightError ? `讀不到觀看數等成效：${insightError}`.slice(0, 300) : ''
+    await db.update(connections).set({ lastSyncedAt: now, lastError }).where(eq(connections.id, connection.id))
+    return { posts: remote.length, error: lastError }
   }
   catch (e) {
-    return targets.map(t => ({ id: t.id, error: (e as Error).message }))
+    const error = `同步貼文失敗：${(e as Error).message}`.slice(0, 300)
+    await db.update(connections).set({ lastSyncedAt: now, lastError: error }).where(eq(connections.id, connection.id))
+    return { posts: 0, error }
   }
-  for (const target of targets) {
-    let error = ''
-    try {
-      let postId = target.externalPostId
-      if (!postId) {
-        recent ??= await listRecentPosts(platform, token, connection.externalId)
-        postId = matchPost(platform, target.publishedUrl, recent)?.id ?? ''
-        if (!postId) throw new Error('在這個帳號最近 50 則貼文裡找不到這個連結')
-      }
-      const metrics = await fetchMetrics(platform, token, postId)
-      await db.update(postTargets).set({ ...metrics, externalPostId: postId, syncError: '', metricsUpdatedAt: nowIso() }).where(eq(postTargets.id, target.id))
-    }
-    catch (e) {
-      error = (e as Error).message.slice(0, 300)
-      // 失敗也更新時間，排程才會輪到下一則，不會卡在同一則
-      await db.update(postTargets).set({ syncError: error, metricsUpdatedAt: nowIso() }).where(eq(postTargets.id, target.id))
-    }
-    results.push({ id: target.id, error })
-  }
-  return results
 }
 
-/** 排程：同步最久沒更新的幾則（近 30 天內、已貼上連結、帳號已連結） */
-export async function syncStaleTargets(limit = 10) {
-  const db = useDb()
-  const since = `${addDays(todayTaipei(), -30)}T00:00`
-  const rows = await db.select({ target: { id: postTargets.id, publishedUrl: postTargets.publishedUrl, externalPostId: postTargets.externalPostId }, connection: connections, platform: accounts.platform })
-    .from(postTargets)
-    .innerJoin(posts, eq(posts.id, postTargets.postId))
-    .innerJoin(connections, eq(connections.accountId, postTargets.accountId))
-    .innerJoin(accounts, eq(accounts.id, postTargets.accountId))
-    .where(and(ne(postTargets.publishedUrl, ''), eq(posts.status, 'scheduled'), gte(posts.scheduledAt, since)))
-    .orderBy(sql`${postTargets.metricsUpdatedAt} is not null`, asc(postTargets.metricsUpdatedAt))
-    .limit(limit)
-  const byConnection = new Map<number, { connection: Connection, platform: string, targets: SyncTarget[] }>()
-  for (const r of rows) {
-    const entry = byConnection.get(r.connection.id) ?? { connection: r.connection, platform: r.platform, targets: [] }
-    entry.targets.push(r.target)
-    byConnection.set(r.connection.id, entry)
-  }
-  for (const { connection, platform, targets } of byConnection.values()) {
-    if (isMetaPlatform(platform)) await syncTargets(platform, connection, targets)
+/** 排程：同步最久沒輪到的幾個帳號。2 個帳號 × (1 + 8 則 × 最多 2 個請求) 在 Free 方案的 50 個對外請求以內 */
+export async function syncStaleAccounts(maxConnections = 2) {
+  const due = await useDb().select({ connection: connections, platform: accounts.platform }).from(connections)
+    .innerJoin(accounts, eq(accounts.id, connections.accountId))
+    .orderBy(sql`${connections.lastSyncedAt} is not null`, asc(connections.lastSyncedAt))
+    .limit(maxConnections)
+  for (const { connection, platform } of due) {
+    if (isMetaPlatform(platform)) await syncAccountPosts(platform, connection, 8)
   }
 }
 

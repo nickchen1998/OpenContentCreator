@@ -79,9 +79,6 @@ async function copyCaption(t: Target) {
 const linkFor = ref<Target>()
 const linkOpen = ref(false)
 const linkUrl = ref('')
-const metricsFor = ref<Target>()
-const metricsOpen = ref(false)
-const metrics = reactive({ views: 0, likes: 0, comments: 0, shares: 0, saves: 0 })
 const dialogError = ref('')
 function openLink(t: Target) {
   linkFor.value = t
@@ -98,22 +95,6 @@ async function saveLink() {
     dialogError.value = e.message
   }
 }
-function openMetrics(t: Target) {
-  metricsFor.value = t
-  Object.assign(metrics, { views: t.views, likes: t.likes, comments: t.comments, shares: t.shares, saves: t.saves })
-  dialogError.value = ''
-  metricsOpen.value = true
-}
-async function saveMetrics() {
-  try {
-    Object.assign(metricsFor.value!, await api<Target>(`/api/targets/${metricsFor.value!.id}`, { method: 'PATCH', body: { ...metrics } }))
-    metricsOpen.value = false
-  }
-  catch (e: any) {
-    dialogError.value = e.message
-  }
-}
-const METRIC_LABELS = { views: '觀看', likes: '按讚', comments: '留言', shares: '分享', saves: '收藏' } as const
 
 async function decide(action: 'approve' | 'reject') {
   const p = await attempt(() => api<Post>(`/api/posts/${id}`, { method: 'PATCH', body: { action } }), action === 'approve' ? '已排入' : '已退回')
@@ -128,15 +109,6 @@ async function remove() {
     refreshBoot()
     await navigateTo({ path: '/', query: { w: mondayOf(post.value!.scheduledAt.slice(0, 10)) } })
   }
-}
-const syncing = ref(false)
-async function sync() {
-  syncing.value = true
-  const result = await attempt(() => api<{ post: Post, errors: string[] }>(`/api/posts/${id}/sync`, { method: 'POST' }))
-  syncing.value = false
-  if (!result) return
-  apply(result.post)
-  notify(result.errors[0] ?? '成效已更新')
 }
 const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected: '已退回', withdrawn: '專案已撤回' }
 </script>
@@ -221,25 +193,17 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
     </div>
 
     <section class="card" style="gap: 16px">
-      <div class="row between">
-        <h2>發文與成效</h2>
-        <button v-if="post.targets.some(t => t.publishedUrl)" type="button" class="btn" :disabled="syncing" @click="sync">{{ syncing ? '同步中…' : '同步成效' }}</button>
-      </div>
+      <h2>發文狀態</h2>
       <div class="col divided" style="gap: 16px">
         <div v-for="t in post.targets" :key="t.id" class="row between gap-lg">
           <div class="col" style="flex: 1 1 200px">
             <div class="bold">{{ platformLabel(t.accountId) }}</div>
             <div v-if="t.publishedUrl" class="small bold" style="color: var(--ok)">已發文　<a :href="t.publishedUrl" target="_blank" rel="noopener noreferrer">開啟貼文</a></div>
             <div v-else class="small" style="color: var(--text-2)">尚未發文</div>
-            <div v-if="t.syncError" class="error">{{ t.syncError }}</div>
-          </div>
-          <div v-if="t.publishedUrl" class="metrics" style="flex: 3 1 420px">
-            <div v-for="(label, key) in METRIC_LABELS" :key="key" class="col" style="gap: 2px"><span class="small muted">{{ label }}</span><b>{{ fmtNum(t[key]) }}</b></div>
           </div>
           <div class="row">
             <button type="button" class="btn" @click="openLink(t)">{{ t.publishedUrl ? '改連結' : '貼上貼文連結' }}</button>
-            <button v-if="t.publishedUrl" type="button" class="btn" @click="openMetrics(t)">登錄成效</button>
-            <button v-else type="button" class="btn" @click="editOpen = true">改時間</button>
+            <button v-if="!t.publishedUrl" type="button" class="btn" @click="editOpen = true">改時間</button>
           </div>
         </div>
       </div>
@@ -250,13 +214,6 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
       <label class="field">{{ linkFor && platformLabel(linkFor.accountId) }} 的貼文連結
         <input v-model="linkUrl" type="url" placeholder="https://">
       </label>
-    </AppDialog>
-    <AppDialog v-model="metricsOpen" title="登錄成效" :error="dialogError" @submit="saveMetrics">
-      <div class="metrics">
-        <label v-for="(label, key) in METRIC_LABELS" :key="key" class="field">{{ label }}
-          <input v-model.number="metrics[key]" type="number" min="0" step="1" required>
-        </label>
-      </div>
     </AppDialog>
   </template>
   <div v-else class="empty">載入中…</div>

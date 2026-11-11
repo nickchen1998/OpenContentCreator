@@ -238,3 +238,58 @@ export async function listThreadReplies(token: string, threadId: string): Promis
   const data = await call('threads', token, `/${threadId}/replies`, { query: { fields: 'id,text,username,timestamp', reverse: 'true', limit: '25' } })
   return (data.data ?? []).map((r: any) => ({ id: String(r.id), username: String(r.username ?? ''), text: String(r.text ?? ''), timestamp: String(r.timestamp ?? '') }))
 }
+
+// ---- 自動匯入貼文與成效（成效總覽用）----
+
+export interface RemotePostStats {
+  id: string
+  url: string
+  text: string
+  publishedAt: string
+  /** 列表這一趟就拿得到的數字；拿不到的是 undefined，不要蓋掉資料庫裡的舊值 */
+  likes?: number
+  comments?: number
+  shares?: number
+}
+
+/** 帳號最近的貼文，連同列表本身就附帶的數字（一個請求）。觀看、分享、收藏要另外用 fetchInsights 逐則抓 */
+export async function listPostsWithStats(platform: MetaPlatform, token: string, selfId: string, limit = 25): Promise<RemotePostStats[]> {
+  const iso = (v: unknown) => {
+    const d = new Date(String(v ?? ''))
+    return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+  }
+  if (platform === 'instagram') {
+    const data = await call(platform, token, `/${selfId}/media`, { query: { fields: 'id,permalink,caption,timestamp,like_count,comments_count', limit: String(limit) } })
+    return (data.data ?? []).map((p: any) => ({ id: String(p.id), url: String(p.permalink ?? ''), text: clip(p.caption), publishedAt: iso(p.timestamp), likes: num(p.like_count), comments: num(p.comments_count) }))
+  }
+  if (platform === 'threads') {
+    const data = await call(platform, token, `/${selfId}/threads`, { query: { fields: 'id,permalink,text,timestamp', limit: String(limit) } })
+    return (data.data ?? []).map((p: any) => ({ id: String(p.id), url: String(p.permalink ?? ''), text: clip(p.text), publishedAt: iso(p.timestamp) }))
+  }
+  const data = await call(platform, token, `/${selfId}/posts`, {
+    query: { fields: 'id,permalink_url,message,created_time,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)', limit: String(limit) },
+  })
+  return (data.data ?? []).map((p: any) => ({
+    id: String(p.id), url: String(p.permalink_url ?? ''), text: clip(p.message), publishedAt: iso(p.created_time),
+    likes: num(p.reactions?.summary?.total_count), comments: num(p.comments?.summary?.total_count), shares: num(p.shares?.count),
+  }))
+}
+
+/**
+ * 單一貼文的 insight：列表拿不到的那幾個數字。拿不到（權限不足、貼文類型不支援）就丟錯，由呼叫端決定怎麼記。
+ * Instagram 1 個請求、Threads 1 個、Facebook 1–2 個。
+ */
+export async function fetchInsights(platform: MetaPlatform, token: string, postId: string): Promise<Partial<Metrics>> {
+  if (platform === 'threads') {
+    const m = insightMap(await call(platform, token, `/${postId}/insights`, { query: { metric: 'views,likes,replies,reposts,quotes,shares' } }))
+    return { views: num(m.views), likes: num(m.likes), comments: num(m.replies), shares: num(m.reposts) + num(m.quotes) + num(m.shares) }
+  }
+  if (platform === 'instagram') {
+    const m = insightMap(await call(platform, token, `/${postId}/insights`, { query: { metric: 'views,shares,saved' } }))
+    return { views: num(m.views), shares: num(m.shares), saves: num(m.saved) }
+  }
+  // 觀看數：新的指標是 post_media_view，舊的是 post_impressions
+  const m = await call(platform, token, `/${postId}/insights`, { query: { metric: 'post_media_view' } }).then(insightMap)
+    .catch(() => call(platform, token, `/${postId}/insights`, { query: { metric: 'post_impressions' } }).then(insightMap))
+  return { views: num(m.post_media_view ?? m.post_impressions) }
+}
