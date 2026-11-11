@@ -64,5 +64,8 @@ export default defineNuxtConfig({
     tokenKey: '',
     // 只給本機測試用：把 Meta 的 API 指到假的伺服器，由 NUXT_META_API_BASE 提供。正式環境不要設
     metaApiBase: '',
+    // YouTube 用的 Google OAuth 用戶端（站方在 GCP 申請，全站共用），由 NUXT_YOUTUBE_CLIENT_ID／NUXT_YOUTUBE_CLIENT_SECRET 提供
+    youtubeClientId: '',
+    youtubeClientSecret: '',
   },
 })

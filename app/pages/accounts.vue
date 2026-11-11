@@ -10,7 +10,21 @@ async function loadConnections() {
     hook.value = data.hook
   }
 }
-onMounted(loadConnections)
+onMounted(async () => {
+  await loadConnections()
+  // 從 Google 的同意畫面回來時，結果帶在網址上（?youtube=ok 或失敗的原因）
+  const result = useRoute().query.youtube
+  if (typeof result === 'string' && result) {
+    notify(result === 'ok' ? 'YouTube 已連結' : `YouTube 連結失敗：${result}`)
+    await navigateTo('/accounts', { replace: true })
+  }
+})
+// YouTube 不用貼權杖：直接帶去 Google 的同意畫面，同意後會回到這一頁
+const connectYoutube = (a: Account) => { window.location.href = `/api/youtube/connect?accountId=${a.id}` }
+async function disconnect(a: Account) {
+  if (!confirm(`中斷 ${PLATFORMS[a.platform].label}「${a.name}」的連結？之後不會再同步這個帳號，也不會回覆留言。`)) return
+  if (await attempt(() => api(`/api/accounts/${a.id}/connection`, { method: 'DELETE' }), '已中斷連結')) await loadConnections()
+}
 const connectionOf = (a: Account) => connections.value.find(c => c.accountId === a.id)
 const connectOpen = ref(false)
 const connectAccount = ref<Account>()
@@ -63,7 +77,11 @@ async function removeAccount() {
         </div>
         <div class="row">
           <span v-if="connectionOf(a)" class="pill" :style="connectionOf(a)!.lastError ? 'background: var(--danger-bg); color: var(--danger)' : ''">{{ connectionOf(a)!.lastError ? '連結異常' : '已連結' }}</span>
-          <button v-if="a.platform !== 'youtube'" type="button" class="btn sm" :class="{ outline: !connectionOf(a) }" :aria-label="`連結 ${PLATFORMS[a.platform].label} ${a.name}`" @click="openConnect(a)">{{ connectionOf(a) ? '連結設定' : '連結' }}</button>
+          <template v-if="a.platform === 'youtube'">
+            <button type="button" class="btn sm" :class="{ outline: !connectionOf(a) }" :aria-label="`連結 YouTube ${a.name}`" @click="connectYoutube(a)">{{ connectionOf(a) ? '重新連結' : '連結' }}</button>
+            <button v-if="connectionOf(a)" type="button" class="btn sm" :aria-label="`中斷 YouTube ${a.name} 的連結`" @click="disconnect(a)">中斷連結</button>
+          </template>
+          <button v-else type="button" class="btn sm" :class="{ outline: !connectionOf(a) }" :aria-label="`連結 ${PLATFORMS[a.platform].label} ${a.name}`" @click="openConnect(a)">{{ connectionOf(a) ? '連結設定' : '連結' }}</button>
           <button type="button" class="btn sm" :aria-label="`編輯 ${PLATFORMS[a.platform].label} ${a.name}`" @click="openAccount(a)">編輯</button>
         </div>
       </div>

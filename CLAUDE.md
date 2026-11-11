@@ -77,7 +77,14 @@
 - **只做一種情境：有人留言 → 回覆留言 ＋ 私訊他指定的內容。不做私訊自動回覆**（使用者明確拒絕），不訂閱、不處理 `messages`
   事件。資料庫裡的 `comments.kind` 欄位是先前留下的，一律是 `comment`，不要再接回私訊自動回覆。
 
-- **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。YouTube 之後由站方在 GCP 申請。
+- **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。
+- **YouTube 走 Google OAuth，用戶端由站方在 GCP 申請、全站共用**（`NUXT_YOUTUBE_CLIENT_ID`／`NUXT_YOUTUBE_CLIENT_SECRET`，正式的值在 `wrangler secret`）。
+  帳號頁按「連結」→ `/api/youtube/connect` 帶去 Google 同意畫面 → `/api/youtube/callback` 存下 refresh token（放在 `connections.token_enc`）。
+  API 在 `server/utils/youtube.ts`；`LinkedPlatform` = Meta 三個＋YouTube，共用的流程（`deliver`、`replyToComment`、`fetchMetrics`、`syncAccountPosts`、
+  `importThreadConversations`）裡用平台分支。一支影片當成一則貼文，留言沒有即時通知，跟 Threads 一起輪詢（每輪 4 支）；沒有私訊。
+  **額度是整個站每天 10,000 單位**：讀取 1 單位、回一則留言 50 單位，新增會打 YouTube 的功能前先算額度。
+  OAuth 同意畫面要是「實際運作中」，「測試中」的授權 7 天就失效。還沒用真的頻道驗證過，只對著假 API 測過。
+- 公開頁面（不用登入）：`/privacy`、`/terms`，給 Meta 與 Google 申請應用程式時填。
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
   驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
 - **貼文管理（`/feed`）**：各平台已同步的貼文，不管有沒有放進系列文（原本是 Threads 專用的「串文管理」，2026-11-11 使用者決定升級成全平台）。

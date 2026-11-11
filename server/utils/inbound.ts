@@ -23,7 +23,7 @@ export async function ownedConnection(uid: number, accountId: number) {
  * 把選好的固定回覆真的送到平台上。成功 → sent；失敗 → 維持 ready 並記下平台回的錯誤，可以在頁面上重送。
  * 有回覆內容就公開回覆留言，有私訊內容就送一則 private reply 給留言者；兩個各自獨立，可以只做其中一個。
  */
-export async function deliver(platform: MetaPlatform, connection: Connection, row: CommentRecord) {
+export async function deliver(platform: LinkedPlatform, connection: Connection, row: CommentRecord) {
   const db = useDb()
   if (row.status !== 'ready' || !row.externalId) return row
   let error = ''
@@ -38,11 +38,13 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
       }).catch(() => {})
     }
     // 只私訊、不回留言的：私訊失敗就是整筆失敗，維持待送出可以重送
-    if (row.dmText && !row.replyText) await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
+    // 私訊只有 Instagram 與 Facebook 有；其他平台的紀錄不會帶 dmText
+    const dmPlatform = platform as MetaPlatform
+    if (row.dmText && !row.replyText) await privateReply(dmPlatform, token, connection.externalId, row.externalId, row.dmText)
     else if (row.dmText) {
       // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因
       try {
-        await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
+        await privateReply(dmPlatform, token, connection.externalId, row.externalId, row.dmText)
       }
       catch (e) {
         error = `留言已回覆，但私訊失敗：${messageOf(e)}`
@@ -113,7 +115,7 @@ interface InboundEvent {
 }
 
 /** 從 webhook（或 Threads 輪詢）收進一則留言或私訊：去重 → 跑規則 → 連結開著自動送出就直接回 */
-export async function receive(boot: OwnedBoot, platform: MetaPlatform, connection: Connection, event: InboundEvent) {
+export async function receive(boot: OwnedBoot, platform: LinkedPlatform, connection: Connection, event: InboundEvent) {
   const db = useDb()
   // 自己發的（包含我們剛送出的回覆）不處理，否則會自己回自己
   const self = event.senderId === connection.externalId || event.senderId === connection.externalName || event.author === `@${connection.externalName}`

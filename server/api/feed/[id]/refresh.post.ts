@@ -29,8 +29,8 @@ export default defineEventHandler(async (event) => {
     warnings.push(`讀不到成效數字：${(e as Error).message}`)
   }
   try {
-    const warning = post.platform === 'threads'
-      ? await importThreadConversations(found.connection, uid, [{ id: post.externalId, text: post.text, inSeries: post.seriesId }], 8)
+    const warning = post.platform === 'threads' || post.platform === 'youtube'
+      ? await importThreadConversations(found.connection, uid, [{ id: post.externalId, text: post.text, inSeries: post.seriesId }], 8, post.platform)
       : token ? await importSeriesComments(post.platform, found.connection, token, uid, [post.externalId]) : ''
     if (warning) warnings.push(warning)
   }
