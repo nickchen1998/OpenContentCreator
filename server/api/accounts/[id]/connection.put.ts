@@ -27,6 +27,8 @@ export default defineEventHandler(async (event) => {
   if (hasWebhook(account.platform) && !appSecret) throw bad('請填寫密鑰')
   if (hasWebhook(account.platform) && !/^[0-9a-f]{32}$/i.test(appSecret)) throw bad('密鑰是 32 個字元的英數字，請按「顯示」後再複製')
 
+  // token 同時授權了好幾個帳號時用來挑是哪一個：已經連結過就沿用上次連到的那個，否則用登記的名稱
+  const hint = previous?.connection.externalName || account.name
   let identity
   try {
     if (account.platform === 'facebook' && await isUserToken(token)) {
@@ -35,12 +37,12 @@ export default defineEventHandler(async (event) => {
       if (!/^\d{5,25}$/.test(appId)) throw new MetaError('應用程式編號是一串數字')
       const missing = await missingPagePermissions(token)
       if (missing.length) throw new MetaError(`產生權杖時少勾了這些權限：${missing.join('、')}`)
-      const page = await pageTokenFromUserToken(token, appId, appSecret, account.name)
+      const page = await pageTokenFromUserToken(token, appId, appSecret, hint)
       token = page.token
       identity = { externalId: page.externalId, externalName: page.externalName }
     }
     else {
-      identity = await identify(account.platform, token, account.name)
+      identity = await identify(account.platform, token, hint)
     }
   }
   catch (e) {

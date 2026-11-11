@@ -59,7 +59,7 @@ async function removeAccount() {
       <div v-for="a in accounts" :key="a.id" class="row between" style="gap: 12px">
         <div class="col">
           <span class="bold">{{ PLATFORMS[a.platform].label }}</span>
-          <span class="small muted wrap-any">{{ connectionOf(a)?.externalName || a.name }}</span>
+          <span class="small muted wrap-any">{{ a.name }}<template v-if="connectionOf(a) && connectionOf(a)!.externalName !== a.name">　·　{{ connectionOf(a)!.externalName }}</template></span>
         </div>
         <div class="row">
           <span v-if="connectionOf(a)" class="pill" :style="connectionOf(a)!.lastError ? 'background: var(--danger-bg); color: var(--danger)' : ''">{{ connectionOf(a)!.lastError ? '連結異常' : '已連結' }}</span>
