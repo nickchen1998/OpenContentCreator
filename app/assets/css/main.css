@@ -331,16 +331,11 @@ table.compact .bar-track { min-width: 70px; }
 }
 
 /* ---- 儀表板：今天要處理、期間比較、最佳貼文、發文時段 ---- */
-.todo { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.todo-card { display: flex; flex-direction: column; padding: 10px 16px; border-radius: var(--radius-card-sm); background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-card); color: var(--ink); text-decoration: none; min-width: 0; }
-.todo-card:hover { border-color: var(--green-deep); }
-.todo-card b { font-size: 22px; font-weight: 800; line-height: 1.3; }
-.todo-card .small { color: var(--muted); }
-.todo-card.warn { background: var(--warn-bg); border-color: var(--warn-line); }
-.todo-card.warn .small, .todo-card.warn b { color: var(--warn); }
-.todo-card.danger { background: var(--danger-bg); border-color: var(--danger); }
-.todo-card.danger .small, .todo-card.danger b { color: var(--danger); }
-.todo-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-link { color: var(--ink); text-decoration: none; }
+.stat-link:hover { border-color: var(--green-deep); }
+.stat-link.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+.stat-link.warn .muted, .stat-link.warn b { color: var(--warn); }
+.alert-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 4px 14px; border-radius: var(--radius-pill); background: var(--danger-bg); border: 1px solid var(--danger); color: var(--danger); font-size: 13px; font-weight: 600; text-decoration: none; }
 .trend-up { color: var(--green-deep); font-weight: 600; }
 .trend-down { color: var(--danger); font-weight: 600; }
 .trend-flat { color: var(--muted); }
