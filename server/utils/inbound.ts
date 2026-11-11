@@ -21,7 +21,7 @@ export async function ownedConnection(uid: number, accountId: number) {
 
 /**
  * 把選好的固定回覆真的送到平台上。成功 → sent；失敗 → 維持 ready 並記下平台回的錯誤，可以在頁面上重送。
- * 公開回覆留言，規則有設私訊的話再送一則 private reply 給留言者。
+ * 有回覆內容就公開回覆留言，有私訊內容就送一則 private reply 給留言者；兩個各自獨立，可以只做其中一個。
  */
 export async function deliver(platform: MetaPlatform, connection: Connection, row: CommentRecord) {
   const db = useDb()
@@ -29,8 +29,10 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
   let error = ''
   try {
     const token = await unseal(connection.tokenEnc)
-    await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
-    if (row.dmText) {
+    if (row.replyText) await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
+    // 只私訊、不回留言的：私訊失敗就是整筆失敗，維持待送出可以重送
+    if (row.dmText && !row.replyText) await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
+    else if (row.dmText) {
       // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因
       try {
         await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
@@ -81,7 +83,7 @@ export async function receive(boot: OwnedBoot, platform: MetaPlatform, connectio
     throw e
   }
   await db.update(connections).set({ lastEventAt: nowIso() }).where(eq(connections.id, connection.id))
-  // 貼文不在任何系列文裡（或系列暫停中）時 row 是空的：不回覆、不留紀錄
+  // 貼文不在任何系列文裡時 row 是空的：不回覆、不留紀錄
   if (row?.status === 'ready' && connection.autoSend) await deliver(platform, connection, row)
 }
 

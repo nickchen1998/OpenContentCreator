@@ -18,7 +18,7 @@ export async function loadSeries(uid: number): Promise<Series[]> {
     db.select({
       collectionId: comments.collectionId,
       received: sql<number>`count(*)`,
-      replied: sql<number>`sum(case when ${comments.status} = 'sent' then 1 else 0 end)`,
+      replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
       // 私訊失敗時 error 會寫「留言已回覆，但私訊失敗」，那種不算送出
       dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
     }).from(comments).innerJoin(collections, eq(collections.id, comments.collectionId)).where(eq(collections.ownerId, uid)).groupBy(comments.collectionId),
@@ -56,14 +56,14 @@ export function seriesValues(body: Record<string, unknown>) {
   const replies = (Array.isArray(body.replies) ? body.replies : []).map(r => str(r, '回覆內容', 500, false)).filter(Boolean)
   if (replies.length > 20) throw bad('回覆最多 20 句')
   const dmText = str(body.dmText, '私訊內容', 1000, false)
-  if (dmText && !replies.length) throw bad('要私訊留言者的話，也要寫至少一句公開回覆')
   return {
     name: str(body.name, '系列文名稱', 40),
     matchType,
-    keywords: str(body.keywords, '關鍵字', 200, matchType === 'keyword' && replies.length > 0),
+    keywords: str(body.keywords, '關鍵字', 200, matchType === 'keyword' && (replies.length > 0 || Boolean(dmText))),
     replies,
     dmText,
-    enabled: body.enabled !== false,
+    // 沒有開關：回覆與私訊各自有填才做。enabled 是舊欄位，一律寫 true
+    enabled: true,
   }
 }
 
@@ -100,7 +100,7 @@ export function loadSeriesComments(seriesId: number) {
 export async function replyTotals(uid: number, days: number) {
   const since = new Date(Date.now() - days * 86400_000).toISOString()
   const [row] = await useDb().select({
-    replied: sql<number>`sum(case when ${comments.status} = 'sent' then 1 else 0 end)`,
+    replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
     dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
   }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(and(eq(accounts.ownerId, uid), gte(comments.createdAt, since)))
   return { replied: row?.replied ?? 0, dms: row?.dms ?? 0 }

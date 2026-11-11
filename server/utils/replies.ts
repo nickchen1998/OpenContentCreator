@@ -15,7 +15,7 @@ export interface Incoming {
 
 /**
  * 留言回覆的引擎：回覆設定跟著「系列文」走。留言所在的貼文屬於某個系列文才會記錄，並依那個系列的設定回覆
- * （沒設定回覆或暫停中就只記錄）；不在任何系列裡的貼文完全不處理、也不留紀錄。
+ * （回覆留言與私訊各自有填才做，兩個都沒填就只記錄）；不在任何系列裡的貼文完全不處理、也不留紀錄。
  * 防洗版：同一個人在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
  * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
@@ -45,9 +45,11 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
     author: input.author, text: input.text, createdAt: input.at ?? nowIso(),
     externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId,
   }
-  // 沒有設定回覆、或自動回覆暫停中的系列文：留言照樣記下來（留言紀錄看得到），只是不回
-  if (!series.replies.length) return insert({ ...base, status: 'unmatched', reason: '這個系列文沒有設定回覆' })
-  if (!series.enabled) return insert({ ...base, status: 'unmatched', reason: '自動回覆暫停中' })
+  // 留言後私訊只有 Instagram 與 Facebook 做得到；系列裡其他平台的貼文只回留言
+  const withDm = Boolean(series.dmText) && (account.platform === 'instagram' || account.platform === 'facebook')
+  const withReply = series.replies.length > 0
+  // 回覆與私訊都沒填的系列文：留言照樣記下來（留言紀錄看得到），只是不動作
+  if (!withReply && !withDm) return insert({ ...base, status: 'unmatched', reason: series.dmText ? '這個平台不能私訊留言者' : '這個系列文沒有設定回覆' })
   const text = input.text.toLowerCase()
   const keyword = series.matchType === 'any' ? '' : keywordsOf(series.keywords).find(k => text.includes(k.toLowerCase()))
   if (series.matchType !== 'any' && !keyword) {
@@ -57,17 +59,15 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
   if (boot.rules.replyPerHour > 0 && (recent[0]?.n ?? 0) >= boot.rules.replyPerHour) {
     return insert({ ...base, status: 'skipped', reason: `這個帳號這一小時已達上限 ${boot.rules.replyPerHour} 則` })
   }
-  const index = series.cursor % series.replies.length
-  // 留言後私訊只有 Instagram 與 Facebook 做得到；系列裡其他平台的貼文只回留言
-  const withDm = Boolean(series.dmText) && (account.platform === 'instagram' || account.platform === 'facebook')
+  const index = withReply ? series.cursor % series.replies.length : 0
   const [, created] = await db.batch([
-    db.update(collections).set({ cursor: series.cursor + 1 }).where(eq(collections.id, series.id)),
+    db.update(collections).set({ cursor: series.cursor + (withReply ? 1 : 0) }).where(eq(collections.id, series.id)),
     db.insert(comments).values({
       ...base,
       status: 'ready',
-      replyText: series.replies[index]!,
+      replyText: withReply ? series.replies[index]! : '',
       dmText: withDm ? series.dmText : '',
-      reason: `${keyword ? `關鍵字「${keyword}」` : '任何留言'}，第 ${index + 1} 句${withDm ? '＋私訊' : ''}`,
+      reason: `${keyword ? `關鍵字「${keyword}」` : '任何留言'}，${[withReply ? `第 ${index + 1} 句` : '', withDm ? '私訊' : ''].filter(Boolean).join('＋')}`,
     }).returning(),
   ])
   return created[0]!
