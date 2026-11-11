@@ -230,8 +230,10 @@ export async function importThreadConversations(connection: Connection, ownerId:
       if (top && at > connection.createdAt) await receive(boot, 'threads', connection, { ...incoming, parentExternalId: parent })
       else await processComment(boot, { accountId: connection.accountId, ...incoming, at, parentExternalId: parent, nested: !top }).catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
     }
-    // 一個 statement 最多 100 個參數，一列十幾個
-    for (let i = 0; i < own.length; i += 6) await db.insert(comments).values(own.slice(i, i + 6)).onConflictDoNothing()
+    // D1 一個 statement 最多 100 個參數，而多列 insert 每一列會把 20 個欄位全部帶上：一次最多 4 列，整批用 batch 一趟送出
+    const writes = []
+    for (let i = 0; i < own.length; i += 4) writes.push(db.insert(comments).values(own.slice(i, i + 4)).onConflictDoNothing())
+    await batchWrites(writes)
   }
   return warning
 }
