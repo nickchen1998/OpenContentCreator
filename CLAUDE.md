@@ -17,7 +17,7 @@
 - **沒有「帳號群組」這個概念**（使用者覺得難懂，2026-11-11 連資料表一起移除）。不要再加回任何把帳號分組的中間層；
   要把貼文歸類看成效用的是「系列」（`collections`）。
 - **新的端點一定要限定在登入的會員身上**：`uidOf(event)` 取會員 id；帳號／專案的 id 要在 `loadBoot(uid)` 裡才算數；
-  以 id 存取其他資料用 `server/utils/owned.ts` 的 `ownedPost` / `ownedAsset` / `ownedTarget` / `ownedRule` / `ownedComment` /
+  以 id 存取其他資料用 `server/utils/owned.ts` 的 `ownedPost` / `ownedAsset` / `ownedTarget` / `ownedComment` /
   `ownedAccount`。別人的資料一律回 404。`loadBoot` 回傳的 `OwnedBoot.ownerId` 用來在查詢裡限定會員。
 - `projects.owner_id` 是較早加的欄位，沒有 cascade，刪會員要走 `deleteUserData`；其他表刪會員時會自動跟著刪。
 - 管理員功能用 `requireAdmin(event)`。沒有開放註冊，也不做 OAuth（使用者的決定）。
@@ -43,7 +43,7 @@
 ## 平台串接
 
 - **只做一種情境：有人留言 → 回覆留言 ＋ 私訊他指定的內容。不做私訊自動回覆**（使用者明確拒絕），不訂閱、不處理 `messages`
-  事件。資料庫裡的 `reply_rules.channel`、`comments.kind` 欄位是先前留下的，一律是 `comment`，不要再接回私訊規則。
+  事件。資料庫裡的 `comments.kind` 欄位是先前留下的，一律是 `comment`，不要再接回私訊自動回覆。
 
 - **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。YouTube 之後由站方在 GCP 申請。
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
