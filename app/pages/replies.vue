@@ -79,7 +79,7 @@ async function removeRule() {
 async function toggle(rule: ReplyRule) {
   if (await attempt(() => api(`/api/rules/${rule.id}`, { method: 'PATCH', body: { enabled: !rule.enabled } }))) rule.enabled = !rule.enabled
 }
-const scope = (r: ReplyRule) => [group(r.groupId)?.name, r.accountId ? PLATFORMS[account(r.accountId)?.platform ?? 'facebook'].label : '全部帳號', r.externalPostId ? `「${r.postLabel}」` : null].filter(Boolean).join(' · ')
+const scope = (r: ReplyRule) => [group(r.groupId)?.name, r.accountId ? PLATFORMS[account(r.accountId)?.platform ?? 'facebook'].label : '全部帳號', r.externalPostId ? `「${r.postLabel.length > 14 ? `${r.postLabel.slice(0, 14)}…` : r.postLabel}」` : null].filter(Boolean).join(' · ')
 const noun = (kind: string) => (kind === 'message' ? '私訊' : '留言')
 const actionOf = (r: ReplyRule) => (r.channel === 'message' ? '回覆私訊' : r.action === 'reply_dm' ? '回覆留言＋私訊' : '回覆留言')
 
@@ -143,12 +143,12 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
         </thead>
         <tbody>
           <tr v-for="r in rules" :key="r.id" :style="r.enabled ? '' : 'opacity: .55'">
-            <th scope="row">{{ r.name }}</th>
+            <th scope="row" style="white-space: nowrap">{{ r.name }}</th>
             <td><span class="pill" :class="{ muted: r.channel === 'message' }">{{ noun(r.channel) }}</span></td>
             <td>{{ scope(r) }}</td>
             <td>{{ r.matchType === 'any' ? `任何${noun(r.channel)}` : `含「${r.keywords}」` }}</td>
-            <td>{{ actionOf(r) }}</td>
-            <td>{{ r.replies.length }} 句</td>
+            <td style="white-space: nowrap">{{ actionOf(r) }}</td>
+            <td style="white-space: nowrap">{{ r.replies.length }} 句</td>
             <td>
               <div class="row" style="flex-wrap: nowrap">
                 <button type="button" class="btn sm" @click="toggle(r)">{{ r.enabled ? '停用' : '啟用' }}</button>
