@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 系列文的成效：合計、系列裡每則貼文、留言紀錄
 const id = Number(useRoute().params.id)
-const { accountLabel, account } = useLookup()
+const { account } = useLookup()
 const series = ref<Series>()
 const comments = ref<CommentRow[]>([])
 const missing = ref(false)
@@ -44,16 +44,29 @@ const PARTS = [
   { key: 'shares', label: '分享', color: '#6250d6' },
   { key: 'saves', label: '收藏', color: '#eda100' },
 ] as const
-const postLabels = computed(() => {
-  const list = series.value?.posts ?? []
-  const platforms = list.map(p => accountLabel(p.accountId).split(' · ')[0]!)
-  // 同一個平台有兩則以上時補上日期才分得出來
-  return list.map((p, i) => (platforms.filter(x => x === platforms[i]).length > 1 ? `${platforms[i]} ${dayOf(p.publishedAt)}` : platforms[i]!))
+// 每則貼文的名稱：平台縮寫＋日期＋開頭幾個字。同一天同平台發好幾則時，光靠平台和日期分不出來
+const labelOf = (p: InsightPost) => {
+  const platform = account(p.accountId)?.platform
+  const head = p.text.replace(/\s+/g, ' ').trim()
+  return `${platform ? PLATFORMS[platform].short : ''} ${dayOf(p.publishedAt)}${head ? ` ${head.length > 7 ? `${head.slice(0, 7)}…` : head}` : ''}`.trim()
+}
+const postLabels = computed(() => (series.value?.posts ?? []).map(labelOf))
+// 圖表最多畫 CHART_ROWS 條：貼文更多時只畫觀看最高的幾則，其餘合併成一條「其他」（每一則的數字在資料表）
+const CHART_ROWS = 8
+const chartRows = computed(() => {
+  const list = [...(series.value?.posts ?? [])].sort((a, b) => b.views - a.views || engagementOf(b) - engagementOf(a))
+  const rows = list.map(p => ({ label: labelOf(p), views: p.views, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves }))
+  if (rows.length <= CHART_ROWS) return { rows, top: 0 }
+  const top = rows.slice(0, CHART_ROWS - 1)
+  const rest = rows.slice(CHART_ROWS - 1)
+  const sum = (key: 'views' | 'likes' | 'comments' | 'shares' | 'saves') => rest.reduce((a, r) => a + r[key], 0)
+  return { rows: [...top, { label: `其他 ${rest.length} 則`, views: sum('views'), likes: sum('likes'), comments: sum('comments'), shares: sum('shares'), saves: sum('saves') }], top: top.length }
 })
-const viewsData = computed(() => [{ label: '觀看', data: (series.value?.posts ?? []).map(p => p.views), color: SERIES_GREEN }])
-const partsData = computed(() => PARTS.map(part => ({ label: part.label, data: (series.value?.posts ?? []).map(p => p[part.key]), color: part.color })))
-// 橫條圖的高度跟著貼文數走，但有上限：貼文很多時寧可條細一點，也不要把頁面撐長
-const rowsHeight = computed(() => Math.min(190, Math.max(84, (series.value?.posts.length ?? 0) * 30 + 34)))
+const chartLabels = computed(() => chartRows.value.rows.map(r => r.label))
+const viewsData = computed(() => [{ label: '觀看', data: chartRows.value.rows.map(r => r.views), color: SERIES_GREEN }])
+const partsData = computed(() => PARTS.map(part => ({ label: part.label, data: chartRows.value.rows.map(r => r[part.key]), color: part.color })))
+// 橫條圖的高度跟著條數走（最多 CHART_ROWS 條，所以不會把頁面撐長）
+const rowsHeight = computed(() => Math.max(84, chartRows.value.rows.length * 24 + 34))
 const view = ref<'chart' | 'table'>('chart')
 const daily = computed(() => {
   const today = todayTaipei()
@@ -66,8 +79,8 @@ const daily = computed(() => {
   }
   return { labels: days.map(fmtDay), data: [{ label: '留言', data: days.map(d => counts.get(d)!), color: SERIES_GREEN }], total: [...counts.values()].reduce((a, b) => a + b, 0) }
 })
-const viewsSummary = computed(() => `各貼文觀看：${(series.value?.posts ?? []).map((p, i) => `${postLabels.value[i]} ${p.views}`).join('、')}`)
-const partsSummary = computed(() => `各貼文互動組成：${(series.value?.posts ?? []).map((p, i) => `${postLabels.value[i]} 按讚 ${p.likes}、留言 ${p.comments}、分享 ${p.shares}、收藏 ${p.saves}`).join('；')}`)
+const viewsSummary = computed(() => `各貼文觀看：${chartRows.value.rows.map(r => `${r.label} ${r.views}`).join('、')}`)
+const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.rows.map(r => `${r.label} 按讚 ${r.likes}、留言 ${r.comments}、分享 ${r.shares}、收藏 ${r.saves}`).join('；')}`)
 
 </script>
 
@@ -106,12 +119,12 @@ const partsSummary = computed(() => `各貼文互動組成：${(series.value?.po
         <div v-if="!series.posts.length" class="empty">還沒有貼文　<button type="button" class="btn-text" @click="settingsOpen = true">加入貼文</button></div>
         <div v-else-if="view === 'chart'" class="charts fill scroll">
           <div class="col" style="gap: 4px">
-            <h3 class="chart-title">各貼文觀看</h3>
-            <BarChart horizontal value-labels :labels="postLabels" :datasets="viewsData" :height="rowsHeight" :summary="viewsSummary" />
+            <h3 class="chart-title">各貼文觀看<span v-if="chartRows.top" class="small muted" style="font-weight: 400">　觀看最高的 {{ chartRows.top }} 則</span></h3>
+            <BarChart horizontal value-labels :labels="chartLabels" :datasets="viewsData" :height="rowsHeight" :summary="viewsSummary" />
           </div>
           <div class="col" style="gap: 4px">
             <h3 class="chart-title">互動組成</h3>
-            <BarChart horizontal stacked :labels="postLabels" :datasets="partsData" :height="rowsHeight + 34" :summary="partsSummary" />
+            <BarChart horizontal stacked :labels="chartLabels" :datasets="partsData" :height="rowsHeight + 34" :summary="partsSummary" />
           </div>
           <div class="chart-fill">
             <h3 class="chart-title">每日留言<span class="small muted" style="font-weight: 400">　近 14 天</span></h3>
