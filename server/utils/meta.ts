@@ -132,7 +132,19 @@ export function subscribe(platform: MetaPlatform, token: string, selfId: string)
 export async function replyToComment(platform: MetaPlatform, token: string, selfId: string, commentId: string, text: string) {
   if (platform === 'threads') {
     const container = await call(platform, token, `/${selfId}/threads`, { method: 'POST', query: { media_type: 'TEXT', text, reply_to_id: commentId } })
-    return call(platform, token, `/${selfId}/threads_publish`, { method: 'POST', query: { creation_id: String(container.id) } })
+      .catch((e) => { throw new MetaError(`建立回覆失敗：${(e as Error).message}`) })
+    // 剛建立的 container 要等 Threads 處理完才能發布，太快發布會回「The requested resource does not exist」，所以等一下再重試
+    let failure: unknown
+    for (const wait of [0, 2000, 4000, 6000]) {
+      if (wait) await new Promise(resolve => setTimeout(resolve, wait))
+      try {
+        return await call(platform, token, `/${selfId}/threads_publish`, { method: 'POST', query: { creation_id: String(container.id) } })
+      }
+      catch (e) {
+        failure = e
+      }
+    }
+    throw new MetaError(`發布回覆失敗：${(failure as Error).message}`)
   }
   return call(platform, token, platform === 'instagram' ? `/${commentId}/replies` : `/${commentId}/comments`, { method: 'POST', body: { message: text } })
 }

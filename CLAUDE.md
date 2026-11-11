@@ -60,6 +60,8 @@
 - **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。YouTube 之後由站方在 GCP 申請。
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
   驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
+- Threads 輪詢只看**系列文裡的貼文**（最新 3 則每輪都看，其餘輪流，`pickForPoll`），不是「最近幾則」。回覆是先建 container 再發布，
+  太快發布會回「The requested resource does not exist」，`replyToComment` 會等幾秒重試。
 - 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。
 - **實測狀態（2026-11-11）**：Instagram（統一登入）已用真的帳號驗證：連結、收留言 webhook、回覆留言、留言後私訊都通，
   不送審的 App 也收得到一般人的留言。**Instagram 的 webhook 是用「Instagram 應用程式密鑰」簽的，不是 Meta App 的 app secret**
