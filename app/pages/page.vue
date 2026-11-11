@@ -7,7 +7,8 @@ const { account } = useLookup()
 const state = ref<State>()
 const draft = ref<PageConfig>(defaultPageConfig())
 const slug = ref('')
-const device = ref<'phone' | 'desktop'>('phone')
+// 右邊預覽的三種樣子：手機、電腦上的頁面，以及網址貼到通訊軟體時的卡片
+const device = ref<'phone' | 'desktop' | 'chat'>('phone')
 const saving = ref(false)
 const busy = ref(false)
 const candidates = ref<Candidate[]>([])
@@ -218,21 +219,9 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
 
           <div class="col" style="gap: 8px">
             <h2>分享預覽</h2>
-            <div class="share-row">
-              <div class="col" style="gap: 8px; flex: 1 1 220px; min-width: 0">
-                <label class="field">標題<input v-model="draft.shareTitle" type="text" maxlength="60" :placeholder="draft.name" @input="touch"></label>
-                <label class="field">說明<textarea v-model="draft.shareText" rows="2" maxlength="160" :placeholder="draft.bio" style="resize: none" @input="touch" /></label>
-              </div>
-              <!-- 貼到 LINE 之類的地方時大概的樣子：圖片（有背景圖用背景圖，否則頭像）、標題、說明、網域 -->
-              <div class="share-card" aria-label="分享預覽的樣子">
-                <div class="share-image" :style="state.view.share.image ? { backgroundImage: `url('${state.view.share.image}')` } : undefined" />
-                <div class="col" style="gap: 2px; padding: 10px 12px; min-width: 0">
-                  <span class="bold share-clip">{{ state.view.share.title }}</span>
-                  <span v-if="state.view.share.text" class="small muted share-clip two">{{ state.view.share.text }}</span>
-                  <span class="small muted">{{ host }}</span>
-                </div>
-              </div>
-            </div>
+            <!-- 左邊只負責設定；貼出去的樣子在右邊預覽的「通訊軟體」。點進輸入框時自動切過去 -->
+            <label class="field">標題<input v-model="draft.shareTitle" type="text" maxlength="60" :placeholder="draft.name" @input="touch" @focus="device = 'chat'"></label>
+            <label class="field">說明<textarea v-model="draft.shareText" rows="2" maxlength="160" :placeholder="draft.bio" style="resize: none" @input="touch" @focus="device = 'chat'" /></label>
           </div>
 
           <div class="col" style="gap: 4px">
@@ -261,10 +250,23 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
           <div class="seg" role="group" aria-label="預覽裝置">
             <button type="button" :aria-pressed="device === 'phone'" @click="device = 'phone'">手機</button>
             <button type="button" :aria-pressed="device === 'desktop'" @click="device = 'desktop'">電腦</button>
+            <button type="button" :aria-pressed="device === 'chat'" @click="device = 'chat'">通訊軟體</button>
           </div>
         </div>
         <div class="preview-stage fill">
-          <div class="preview-frame scroll" :class="device">
+          <!-- 把網址貼到 LINE 之類的地方時大概的樣子：一則帶網址的訊息，底下是預覽卡片（圖片、標題、說明、網域） -->
+          <div v-if="device === 'chat'" class="chat-mock scroll" aria-label="貼到通訊軟體時的樣子">
+            <div class="chat-bubble wrap-any">{{ url }}</div>
+            <div class="share-card">
+              <div class="share-image" :class="{ empty: !state.view.share.image }" :style="state.view.share.image ? { backgroundImage: `url('${state.view.share.image}')` } : undefined" />
+              <div class="col" style="gap: 2px; padding: 12px 14px; min-width: 0">
+                <span class="bold share-clip two">{{ state.view.share.title }}</span>
+                <span v-if="state.view.share.text" class="small muted share-clip two">{{ state.view.share.text }}</span>
+                <span class="small muted">{{ host }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="preview-frame scroll" :class="device">
             <PublicPageView :view="state.view" />
           </div>
         </div>
