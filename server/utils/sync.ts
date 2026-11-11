@@ -57,20 +57,22 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
 }
 
 /**
- * 補抓系列文裡各貼文的既有留言：系列文建立之前就有的留言、或即時通知漏掉的。
+ * 補抓貼文的既有留言（預設是這個帳號最新幾則系列文貼文；給 only 就只抓指定的那幾則）：系列文建立之前就有的留言、或即時通知漏掉的。
  * 跑一樣的規則，但**不自動送出**：命中的會是「待送出」，由會員自己決定要不要回（否則把一篇有上百則留言的貼文
  * 加進系列文，會一口氣對所有人回覆加私訊）。每次最多看 4 則貼文、收 12 則新留言，其餘下次同步再收。
  */
-export async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number) {
+export async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number, only?: string[]) {
   const db = useDb()
   try {
-    const [targets, seenRows] = await db.batch([
+    const [found, seenRows] = await db.batch([
       db.select({ externalId: accountPosts.externalId }).from(accountPosts)
         .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .where(eq(accountPosts.accountId, connection.accountId)).orderBy(sql`${accountPosts.publishedAt} desc`).limit(4),
       db.select({ externalId: comments.externalId }).from(comments)
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId))).orderBy(sql`${comments.id} desc`).limit(1000),
     ])
+    // only：只補抓指定的貼文（貼文管理頁點開一則貼文時），不限系列文
+    const targets = only ? only.map(externalId => ({ externalId })) : found
     if (!targets.length) return ''
     // 貼文加進系列文之前就記下的留言，補上所屬的系列文，留言紀錄才看得到
     await db.run(sql`update comments set collection_id = (
@@ -162,7 +164,7 @@ export async function pollThreads(maxConnections = 3) {
   for (const { connection, ownerId } of due) {
     await db.update(connections).set({ lastPolledAt: nowIso() }).where(eq(connections.id, connection.id))
     try {
-      // 已同步的貼文都會輪到（串文管理頁要看得到每則的回覆），每輪最多 THREADS_PER_POLL 則（每則 1 個請求）
+      // 已同步的貼文都會輪到（貼文管理頁要看得到每則的回覆），每輪最多 THREADS_PER_POLL 則（每則 1 個請求）
       const known = await db.select({ id: accountPosts.externalId, text: accountPosts.text, inSeries: collectionPosts.collectionId }).from(accountPosts)
         .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .where(eq(accountPosts.accountId, connection.accountId)).orderBy(desc(accountPosts.publishedAt)).limit(200)
@@ -179,7 +181,7 @@ export async function pollThreads(maxConnections = 3) {
 
 /**
  * 把幾則 Threads 貼文底下的整串對話收進來：別人的留言照規則處理（新的會自動回，舊的與對話裡的後續回覆只記錄），
- * 帳號自己的回覆與子文記成 own。排程輪詢與串文管理頁「點開一則貼文」共用。
+ * 帳號自己的回覆與子文記成 own。排程輪詢與貼文管理頁「點開一則貼文」共用。
  * limit 是這次最多處理幾則別人的留言（回一則要 2 個請求、幾個 D1 查詢）。整串讀不到、只拿到第一層時回傳原因。
  */
 export async function importThreadConversations(connection: Connection, ownerId: number, threads: { id: string, text: string, inSeries: number | null }[], limit: number) {

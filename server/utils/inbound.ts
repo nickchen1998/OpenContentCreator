@@ -120,7 +120,7 @@ export async function receive(boot: OwnedBoot, platform: MetaPlatform, connectio
   if (!event.externalId || !event.text.trim()) return
   if (self) {
     // 但要記下來，對話串才看得到「我的回覆」（包含在平台 App 上自己打的）
-    if (event.parentExternalId) await recordOwn(connection, { externalId: event.externalId, parentExternalId: event.parentExternalId, externalPostId: event.externalPostId, text: event.text, onlyInSeries: platform !== 'threads' })
+    if (event.parentExternalId) await recordOwn(connection, { externalId: event.externalId, parentExternalId: event.parentExternalId, externalPostId: event.externalPostId, text: event.text })
     return
   }
   const [seen] = await db.select({ id: comments.id }).from(comments)

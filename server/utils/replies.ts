@@ -19,8 +19,7 @@ export interface Incoming {
 
 /**
  * 留言回覆的引擎：回覆設定跟著「系列文」走。留言所在的貼文屬於某個系列文才會記錄，並依那個系列的設定回覆
- * （回覆留言與私訊各自有填才做，兩個都沒填就只記錄）；不在任何系列裡的貼文完全不處理、也不留紀錄，
- * 只有 Threads 例外：全部都記錄（不回），給串文管理頁用。
+ * （回覆留言與私訊各自有填才做，兩個都沒填就只記錄）；不在任何系列裡的貼文只記錄、不自動回，給貼文管理頁用。
  * 防洗版：同一個人在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
  * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
@@ -48,8 +47,7 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
     externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId, parentExternalId: input.parentExternalId ?? '',
   }
   if (!series) {
-    // 貼文不在任何系列文裡：Threads 照樣記下來（串文管理頁要看得到、由會員手動回），其他平台不處理也不記錄
-    if (account.platform !== 'threads') return
+    // 貼文不在任何系列文裡：照樣記下來（貼文管理頁要看得到、由會員手動回），只是不自動回
     return insert({ ...record, status: 'unmatched', reason: input.nested ? '對話中的回覆' : '未歸入系列文' })
   }
   if (input.nested) return insert({ ...record, collectionId: series.id, ruleName: series.name, status: 'unmatched', reason: '對話中的回覆' })

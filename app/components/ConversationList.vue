@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 對話：留言紀錄整理成一張張卡片（一個人在一則貼文底下的往來算一張），點卡片在同一個區塊裡展開成整串對話。
-// 串文管理與系列文成效頁共用。資料有變動時發出 changed，由外面重新讀取 rows。
+// 貼文管理與系列文成效頁共用。資料有變動時發出 changed，由外面重新讀取 rows。
 const props = defineProps<{ rows: CommentRow[], showPlatform?: boolean, showParts?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const { account } = useLookup()

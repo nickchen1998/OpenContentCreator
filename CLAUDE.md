@@ -41,25 +41,25 @@
 - 回覆設定跟著系列文走（`collections` 表，介面與 API 叫 series）：沒有獨立的「規則」頁，也沒有對全部帳號生效的規則
   （2026-11-11 使用者決定整合，`reply_rules` 表已刪）。不要再做回獨立的規則管理。
 - 一則貼文只能屬於一個系列文（`collection_posts.post_id` 唯一）。留言進來時用（帳號, 平台貼文 id）找到 `account_posts`
-  → 系列文 → 依設定回覆；貼文不在系列裡時完全不處理也不留紀錄（`server/utils/replies.ts`）。
+  → 系列文 → 依設定回覆；貼文不在系列裡時**只記錄、不自動回**（給貼文管理頁用，`server/utils/replies.ts`）。
 - **系列文沒有「啟用」開關**：「回覆留言」與「私訊留言者」兩個輸入框各自有填才做、留空就不做（可以只私訊不回留言）；
   兩個都沒填就只記錄留言。`collections.enabled` 是舊欄位，一律是 true，不要再加回 checkbox。
 - 同步時會補抓系列文裡各貼文的既有留言（`importSeriesComments`）：**只記錄、不自動送出**，命中的標成待送出，由會員決定要不要回。
   不要改成自動送出，否則把一篇已有大量留言的貼文加進系列文會一口氣對所有人回覆加私訊。
-- **「立即同步」有三處**：系列文成效頁一顆（`syncSeries`：只同步這個系列文裡的貼文，一次最多 8 則、最久沒更新的優先）、儀表板一顆（`syncAll`：貼文與成效數字＋Threads 最新幾則的整串對話），以及串文管理每則貼文各一顆
-  （只同步那一則的成效數字與對話；舊貼文排程輪不到，由使用者手動補，這是使用者選的做法）。串文管理頁面上方不要再放整頁的同步按鈕。
-- **頁面會自動更新**：`useAutoRefresh`（儀表板、系列文清單與成效頁、串文管理）每 30 秒打一次 `/api/changes` 拿指紋，有變才重新載入，
+- **「立即同步」有三處**：系列文成效頁一顆（`syncSeries`：只同步這個系列文裡的貼文，一次最多 8 則、最久沒更新的優先）、儀表板一顆（`syncAll`：貼文與成效數字＋Threads 最新幾則的整串對話），以及貼文管理每則貼文各一顆
+  （只同步那一則的成效數字與留言；舊貼文排程輪不到，由使用者手動補，這是使用者選的做法）。貼文管理頁面上方不要再放整頁的同步按鈕。
+- **頁面會自動更新**：`useAutoRefresh`（儀表板、系列文清單與成效頁、貼文管理）每 30 秒打一次 `/api/changes` 拿指紋，有變才重新載入，
   分頁在背景時暫停。不做 SSE：Worker 的請求之間沒辦法互相通知，要真推送得加 Durable Object（使用者同意先用輪詢）。
   新增會影響畫面的資料時，記得讓 `/api/changes` 的指紋跟著變。
 - 圖表用 Chart.js，包在 `app/components/BarChart.vue`（只註冊長條圖用到的部分）。互動組成的四個顏色用 dataviz 的
   `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。每組圖表下面留一個「資料表」。
 - **留言紀錄是「對話」**：`comments.parent_external_id` 記它回覆哪一則、`comments.mine` 記是不是帳號自己發的（送出的回覆、在平台上自己回的、
   Threads 的子文；status 一律是 `own`，**算留言數時要排除**）。`shared/utils/conversations.ts` 的 `groupConversations` 把紀錄組成對話與子文串，
-  網頁（`ConversationList`：卡片 → 在同一個區塊內展開整串，串文管理與系列文成效頁共用，不開新頁）與伺服器共用。
+  網頁（`ConversationList`：卡片 → 在同一個區塊內展開整串，貼文管理與系列文成效頁共用，不開新頁）與伺服器共用。
   對話最後一句是對方說的就是「待回覆」。**對話裡的後續回覆（回覆的回覆）只記錄、不自動回**，否則會跟人來回洗版；
   Threads 回在子文底下的留言算第一層，照系列文設定自動回。手動回覆走 `/api/comments/[id]/reply`，同一則可以回不只一次。
 - 留言紀錄用 `comments.collection_id` 歸屬系列文，顯示在系列成效頁。`comments.rule_id`／`rule_name`／`kind` 是舊欄位。
-- 側欄順序：Dashboard、Series、Threads（串文管理）、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
+- 側欄順序：Dashboard、Series、Posts（貼文管理）、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
   點進去就是成效頁（一個系列文只有一頁）。新增與設定共用 `SeriesDialog`（畫面中間的視窗），貼文清單在區塊內捲動並分頁。
 
 ## 平台串接
@@ -70,9 +70,12 @@
 - **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。YouTube 之後由站方在 GCP 申請。
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
   驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
-- **串文管理（`/threads`）是 Threads 專用的頁面**：Threads 發得多、大部分不屬於任何系列文，所以 Threads 是唯一「不在系列文裡也記錄留言」的平台
-  （記成未回覆、不自動回，由會員在這一頁手動回或按「不用回」）；自動回覆仍然只跟著系列文。貼文歸在哪個系列文只在左邊的貼文清單顯示，**不提供設定**、右邊也不重複顯示（使用者的決定）；要改到系列文管理去改。對話卡片沒有「只看待回覆」的篩選（使用者要求移除，串文管理與系列文成效頁都是）。
-  不要給 Threads 加「所有貼文都自動回」的帳號層級規則。
+- **貼文管理（`/feed`）**：各平台已同步的貼文，不管有沒有放進系列文（原本是 Threads 專用的「串文管理」，2026-11-11 使用者決定升級成全平台）。
+  上方是平台分頁，左邊貼文清單、右邊那則貼文的對話卡片與手動回覆；Threads 的子文串只在 Threads 貼文出現。
+  **所有平台不在系列文裡的留言都會記錄**（未回覆、不自動回，由會員手動回或按「不用回」）；自動回覆仍然只跟著系列文，
+  不要加「所有貼文都自動回」的帳號層級規則。貼文歸在哪個系列文只在左邊的貼文清單顯示，**不提供設定**、右邊也不重複顯示；
+  要改到系列文管理去改。對話卡片沒有「只看待回覆」的篩選（使用者要求移除，貼文管理與系列文成效頁都是）。
+  點開貼文會立刻抓那一則的留言（`/api/feed/[id]/refresh`）：Threads 是整串對話，Instagram／Facebook 是第一層留言（回覆的回覆靠 webhook 即時進來）。
 - Threads 輪詢用 conversation 端點一次拿整串（含回覆的回覆、自己的回覆、子文；讀不到會退回只看第一層），會輪到所有已同步的貼文（最新 2 則每輪都看，其餘名額系列文與非系列文各半輪流，`pickForPoll`）；連結之前的舊回覆只記錄、不自動送出。回覆是先建 container 再發布，
   太快發布會回「The requested resource does not exist」，`replyToComment` 會等幾秒重試。
 - 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。

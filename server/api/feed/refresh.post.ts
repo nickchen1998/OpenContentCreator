@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { accountPosts, accounts, collectionPosts, connections } from '../../database/schema'
 
-// 串文管理頁的「立即同步」：把這個會員各 Threads 帳號最新幾則貼文的整串對話抓回來（成效數字由 /api/insights/sync 同步）。
+// 儀表板「立即同步」的第二步：把這個會員各 Threads 帳號最新幾則貼文的整串對話抓回來（成效數字由 /api/insights/sync 同步）。
 // Free 方案一個請求最多 50 個對外請求與 50 個 D1 查詢，所以帳號越多、每個帳號看的貼文與處理的留言就越少；沒輪到的由排程接手
 export default defineEventHandler(async (event) => {
   const uid = uidOf(event)

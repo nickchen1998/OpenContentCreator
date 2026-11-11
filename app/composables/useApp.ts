@@ -78,7 +78,7 @@ export function fmtSize(bytes: number) {
  */
 export async function syncAll() {
   const data = await attempt(() => api<{ errors: string[] }>('/api/insights/sync', { method: 'POST' }))
-  const talk = await attempt(() => api<{ errors: string[] }>('/api/threads/refresh', { method: 'POST' }))
+  const talk = await attempt(() => api<{ errors: string[] }>('/api/feed/refresh', { method: 'POST' }))
   if (!data && !talk) return false
   const errors = [...(data?.errors ?? []), ...(talk?.errors ?? [])]
   notify(errors.length ? errors.join('；') : '已同步')
