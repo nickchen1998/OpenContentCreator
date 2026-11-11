@@ -99,6 +99,8 @@
   `DROP TABLE` 會觸發子表的 ON DELETE CASCADE 把資料刪光。照 `0008_remove_groups.sql` 的做法：子表先備份到暫存表、
   一次只換一張表（子表指向的父表隨時都要存在）、換完用 `INSERT OR IGNORE` 還原。上正式環境前先 `wrangler d1 export`
   備份到 `.backups/`（已 gitignore），並在本機有資料的 D1 演練、比對每張表的筆數。
+- **D1 一個 statement 最多 100 個參數，drizzle 的多列 insert 每一列會把資料表的全部欄位都帶上**（`comments` 有 20 欄）：
+  一次最多 4 列，多批用 `batchWrites`。超過會整句失敗（「Failed query: insert into …」），本機資料少時測不出來。
 - Workers Free 方案每個請求 10ms CPU、50 次 D1 查詢：多筆寫入用 `db.batch()`（`batchWrites`），
   共用資料用 `loadBoot()` 一趟讀完。
 - 撞期判斷集中在 `server/utils/coordination.ts`，網頁與 MCP 共用；衝突是讀取時算的，不存進資料庫。
