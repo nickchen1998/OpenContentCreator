@@ -4,7 +4,7 @@ const SECTIONS = [
   {
     id: 'instagram',
     title: 'Instagram',
-    can: '留言回覆、留言後私訊、私訊自動回覆、成效同步',
+    can: '留言回覆、留言後私訊、成效同步',
     need: 'Instagram 專業帳號（商業或創作者）、商家資產管理組合',
     steps: [
       '到 developers.facebook.com 建立應用程式，使用案例勾選「管理 Instagram 的訊息和內容」。',
@@ -14,19 +14,19 @@ const SECTIONS = [
       '按「產生權杖」產生 Access token 並複製（只會顯示一次）。',
       '在同一頁最上方找到「Instagram 應用程式密鑰」並複製。注意不是「應用程式設定 › 基本資料」的那一把，用錯的話留言會進不來。',
       '回到這裡的「帳號群組」，在該帳號按「連結」，貼上 Access token 與 Instagram 應用程式密鑰。',
-      '回到 Meta 的「設定 Webhooks」，貼上連結視窗裡的「回呼網址」與「驗證權杖」，訂閱 comments 與 messages。',
+      '回到 Meta 的「設定 Webhooks」，貼上連結視窗裡的「回呼網址」與「驗證權杖」，訂閱 comments。',
     ],
     scopes: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'instagram_manage_insights'],
   },
   {
     id: 'facebook',
     title: 'Facebook 粉專',
-    can: '留言回覆、留言後私訊、私訊自動回覆、成效同步',
+    can: '留言回覆、留言後私訊、成效同步',
     need: '你是該粉專的管理員',
     steps: [
       '到 developers.facebook.com 建立應用程式，使用案例勾選「透過 Messenger from Meta 與顧客互動」與「管理粉絲專頁的所有內容」。',
       '在這兩個使用案例的「權限和功能」把下面列的權限都加上（狀態變成「可供測試」）。',
-      '在「Messenger API 設定」的「設定 Webhooks」貼上連結視窗裡的「回呼網址」與「驗證權杖」，訂閱 messages 與 feed；再到「產生存取權杖」連結你的粉專，按「新增訂閱」同樣勾 messages 與 feed。那一頁的「產生」按鈕不要用，它給的權杖只有私訊權限。',
+      '在「Messenger API 設定」的「設定 Webhooks」貼上連結視窗裡的「回呼網址」與「驗證權杖」，訂閱 feed；再到「產生存取權杖」連結你的粉專，按「新增訂閱」同樣勾 feed。那一頁的「產生」按鈕不要用，它給的權杖只有私訊權限。',
       '開「工具 › 圖形 API 測試工具」：Meta 應用程式選你的 App，「用戶或粉絲專頁」選「取得用戶存取權杖」，把下面列的權限都加進去，按「Generate Access Token」並勾選你的粉專。複製產生的權杖。',
       '到「應用程式設定 › 基本資料」複製「應用程式編號」與「應用程式密鑰」。',
       '回到這裡的「帳號群組」，在該帳號按「連結」，貼上權杖、應用程式編號與應用程式密鑰。系統會自動換成不會到期的粉專權杖。',

@@ -13,7 +13,7 @@
 | 貼文 `/posts/:id` | 素材上傳與下載（R2）、各平台文案、發文連結、成效同步 |
 | 成效 `/insights` | 依帳號、群組彙整已發出貼文的觀看與互動 |
 | 設定教學 `/guide` | 各平台怎麼建立 Meta App、產生 token、設定 Webhook |
-| 自動回覆 `/replies` | 留言與私訊的固定回覆規則（關鍵字／任何、指定貼文、多句輪替、防洗版）與紀錄 |
+| 自動回覆 `/replies` | 留言的固定回覆規則（關鍵字／任何、指定貼文、多句輪替、防洗版）與紀錄 |
 | MCP 連線 `/connections` | 提案佇列、專案與 token、協調規則 |
 | 帳號群組 `/groups` | 群組與底下各平台的帳號、連結平台 API |
 | 會員管理 `/members` | 管理員建立會員、重設密碼、刪除會員 |
@@ -44,17 +44,19 @@ claude mcp add --transport http opencontentcreator https://opencontentcreator.co
 
 會員用**自己的 Meta App** 產生 token 貼進來（只服務自己的帳號，不需要 Meta 的 App Review）。設定步驟在站內的 `/guide`。
 
-| 平台 | 留言回覆 | 留言後私訊 | 私訊自動回覆 | 成效同步 | 怎麼收到留言 |
-|---|---|---|---|---|---|
-| Instagram | ✓ | ✓ | ✓ | ✓ | Webhook（即時） |
-| Facebook 粉專 | ✓ | ✓ | ✓ | ✓ | Webhook（即時） |
-| Threads | ✓ | 平台不支援 | 平台不支援 | ✓ | 每 5 分鐘輪詢（Webhook 要過 App Review） |
-| YouTube | 還沒做 | 平台不支援 | 平台不支援 | 還沒做 | — |
+| 平台 | 留言回覆 | 留言後私訊 | 成效同步 | 怎麼收到留言 |
+|---|---|---|---|---|
+| Instagram | ✓ | ✓ | ✓ | Webhook（即時） |
+| Facebook 粉專 | ✓ | ✓ | ✓ | Webhook（即時） |
+| Threads | ✓ | 平台不支援 | ✓ | 每 5 分鐘輪詢（Webhook 要過 App Review） |
+| YouTube | 還沒做 | 平台不支援 | 還沒做 | — |
+
+唯一的情境是「有人留言 → 回覆留言，並私訊他指定的內容」。**不做私訊自動回覆**，系統也不接收使用者傳來的私訊。
 
 - 規則可以掛在群組、單一帳號，或**單一貼文**（從帳號最近的貼文挑）：不同貼文的留言可以私訊不同內容。
 - token 與 app secret 用 `NUXT_TOKEN_KEY` 加密後才存進 D1。
 - 成效每 30 分鐘輪流同步，貼文頁也可以按「同步成效」。Instagram 與 Threads 的 token 60 天到期，排程會自動換新。
-- **這一段是對著假的 Graph API 測過的，還沒有用真的 Meta App 跑過**（見 CLAUDE.md）。
+- Instagram 與 Facebook 粉專已用真的帳號實測；Threads 與成效同步還沒有（見 CLAUDE.md）。
 
 ### 還沒做的
 

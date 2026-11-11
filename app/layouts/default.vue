@@ -12,7 +12,7 @@ const sections = computed(() => [
   { label: 'Workspace', items: [
     { to: '/', en: 'Schedule', zh: '排程週曆' },
     { to: '/insights', en: 'Insights', zh: '成效總覽' },
-    { to: '/replies', en: 'Replies', zh: '留言與固定回覆' },
+    { to: '/replies', en: 'Replies', zh: '留言自動回覆' },
   ] },
   { label: 'Setup', items: [
     { to: '/connections', en: 'Connections', zh: 'MCP 連線與提案', badge: pending.value },

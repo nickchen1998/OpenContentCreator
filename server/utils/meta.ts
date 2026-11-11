@@ -124,7 +124,7 @@ export async function missingPagePermissions(token: string) {
 export function subscribe(platform: MetaPlatform, token: string, selfId: string) {
   return call(platform, token, `/${selfId}/subscribed_apps`, {
     method: 'POST',
-    query: { subscribed_fields: platform === 'instagram' ? 'comments,messages' : 'feed,messages' },
+    query: { subscribed_fields: platform === 'instagram' ? 'comments' : 'feed' },
   })
 }
 
@@ -144,12 +144,6 @@ const messageBody = (platform: MetaPlatform, recipient: Record<string, string>, 
 export function privateReply(platform: MetaPlatform, token: string, selfId: string, commentId: string, text: string) {
   if (platform === 'threads') throw new MetaError('Threads 不支援私訊')
   return call(platform, token, `/${selfId}/messages`, { method: 'POST', body: messageBody(platform, { comment_id: commentId }, text) })
-}
-
-/** 回覆私訊：對方傳訊後 24 小時內才能送 */
-export function sendMessage(platform: MetaPlatform, token: string, selfId: string, recipientId: string, text: string) {
-  if (platform === 'threads') throw new MetaError('Threads 不支援私訊')
-  return call(platform, token, `/${selfId}/messages`, { method: 'POST', body: messageBody(platform, { id: recipientId }, text) })
 }
 
 /** 貼文的文字（給留言紀錄顯示用），拿不到就算了 */

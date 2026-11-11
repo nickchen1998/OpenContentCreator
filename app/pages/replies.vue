@@ -4,7 +4,6 @@ const { accountLabel, group, account } = useLookup()
 const rules = ref<ReplyRule[]>([])
 const comments = ref<CommentRow[]>([])
 const selected = ref(0)
-const filter = ref<'all' | 'comment' | 'message'>('all')
 const error = ref('')
 
 async function load() {
@@ -14,13 +13,13 @@ async function load() {
   if (!comments.value.some(x => x.id === selected.value)) selected.value = comments.value[0]?.id ?? 0
 }
 onMounted(load)
-const shown = computed(() => comments.value.filter(c => filter.value === 'all' || c.kind === filter.value))
+const shown = comments
 const sel = computed(() => comments.value.find(c => c.id === selected.value))
 
 // 規則
 const ruleOpen = ref(false)
 const editing = ref<ReplyRule>()
-const blank = () => ({ externalPostId: '', postLabel: '', name: '', groupId: boot.value.groups[0]?.id ?? 0, accountId: null as number | null, channel: 'comment' as 'comment' | 'message', matchType: 'keyword' as 'keyword' | 'any', keywords: '', action: 'reply' as 'reply' | 'reply_dm', repliesText: '', dmText: '', enabled: true })
+const blank = () => ({ externalPostId: '', postLabel: '', name: '', groupId: boot.value.groups[0]?.id ?? 0, accountId: null as number | null, matchType: 'keyword' as 'keyword' | 'any', keywords: '', action: 'reply' as 'reply' | 'reply_dm', repliesText: '', dmText: '', enabled: true })
 const form = reactive(blank())
 function openRule(rule?: ReplyRule) {
   editing.value = rule
@@ -36,7 +35,7 @@ const remoteState = ref<'idle' | 'loading' | 'error'>('idle')
 async function loadRemotePosts() {
   remotePosts.value = []
   remoteState.value = 'idle'
-  if (form.accountId == null || form.channel !== 'comment') return
+  if (form.accountId == null) return
   remoteState.value = 'loading'
   try {
     remotePosts.value = await api<RemotePost[]>(`/api/accounts/${form.accountId}/posts`)
@@ -80,12 +79,11 @@ async function toggle(rule: ReplyRule) {
   if (await attempt(() => api(`/api/rules/${rule.id}`, { method: 'PATCH', body: { enabled: !rule.enabled } }))) rule.enabled = !rule.enabled
 }
 const scope = (r: ReplyRule) => [group(r.groupId)?.name, r.accountId ? PLATFORMS[account(r.accountId)?.platform ?? 'facebook'].label : '全部帳號', r.externalPostId ? `「${r.postLabel.length > 14 ? `${r.postLabel.slice(0, 14)}…` : r.postLabel}」` : null].filter(Boolean).join(' · ')
-const noun = (kind: string) => (kind === 'message' ? '私訊' : '留言')
-const actionOf = (r: ReplyRule) => (r.channel === 'message' ? '回覆私訊' : r.action === 'reply_dm' ? '回覆留言＋私訊' : '回覆留言')
+const actionOf = (r: ReplyRule) => (r.action === 'reply_dm' ? '回覆留言＋私訊' : '回覆留言')
 
 // 手動貼入（測試規則，或還沒連結的帳號）
 const commentOpen = ref(false)
-const cform = reactive({ accountId: 0, kind: 'comment' as 'comment' | 'message', postTitle: '', author: '', text: '' })
+const cform = reactive({ accountId: 0, postTitle: '', author: '', text: '' })
 function openComment() {
   error.value = ''
   Object.assign(cform, { accountId: cform.accountId || boot.value.groups[0]?.accounts[0]?.id || 0, postTitle: '', author: '', text: '' })
@@ -139,14 +137,13 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
     <div class="table-scroll">
       <table v-if="rules.length" style="min-width: 760px">
         <thead>
-          <tr><th scope="col">規則</th><th scope="col">對象</th><th scope="col">範圍</th><th scope="col">觸發</th><th scope="col">動作</th><th scope="col">回覆</th><th scope="col">操作</th></tr>
+          <tr><th scope="col">規則</th><th scope="col">範圍</th><th scope="col">觸發</th><th scope="col">動作</th><th scope="col">回覆</th><th scope="col">操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="r in rules" :key="r.id" :style="r.enabled ? '' : 'opacity: .55'">
             <th scope="row" style="white-space: nowrap">{{ r.name }}</th>
-            <td><span class="pill" :class="{ muted: r.channel === 'message' }">{{ noun(r.channel) }}</span></td>
             <td>{{ scope(r) }}</td>
-            <td>{{ r.matchType === 'any' ? `任何${noun(r.channel)}` : `含「${r.keywords}」` }}</td>
+            <td>{{ r.matchType === 'any' ? '任何留言' : `含「${r.keywords}」` }}</td>
             <td style="white-space: nowrap">{{ actionOf(r) }}</td>
             <td style="white-space: nowrap">{{ r.replies.length }} 句</td>
             <td>
@@ -165,16 +162,12 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
   <div class="grid-2">
     <section class="card" style="padding: 14px; gap: 8px" aria-label="紀錄">
       <div class="row between" style="margin: 4px 8px">
-        <div class="row" role="group" aria-label="篩選">
-          <button type="button" class="chip" :aria-pressed="filter === 'all'" @click="filter = 'all'">全部</button>
-          <button type="button" class="chip" :aria-pressed="filter === 'comment'" @click="filter = 'comment'">留言</button>
-          <button type="button" class="chip" :aria-pressed="filter === 'message'" @click="filter = 'message'">私訊</button>
-        </div>
+        <h2>紀錄</h2>
         <button type="button" class="btn sm" :disabled="!boot.groups.some(g => g.accounts.length)" @click="openComment">手動貼入</button>
       </div>
       <button v-for="c in shown" :key="c.id" type="button" class="list-btn" :aria-pressed="c.id === selected" @click="selected = c.id">
         <span class="row between" style="flex-wrap: nowrap">
-          <span class="small muted">{{ accountLabel(c.accountId) }} · {{ noun(c.kind) }} · {{ c.author }}</span>
+          <span class="small muted">{{ accountLabel(c.accountId) }} · {{ c.author }}</span>
           <span class="tag" :style="stateStyle(c)">{{ stateLabel(c) }}</span>
         </span>
         <span class="wrap-any">{{ c.text }}</span>
@@ -184,7 +177,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
 
     <section v-if="sel" class="card" style="gap: 14px" aria-label="內容">
       <div class="col">
-        <div class="small muted">{{ accountLabel(sel.accountId) }} · {{ noun(sel.kind) }}<template v-if="sel.postTitle"> ·「{{ sel.postTitle }}」</template></div>
+        <div class="small muted">{{ accountLabel(sel.accountId) }}<template v-if="sel.postTitle"> ·「{{ sel.postTitle }}」</template></div>
         <div class="bold">{{ sel.author }}</div>
       </div>
       <div class="box wrap-any" style="line-height: 1.7; padding: 14px 16px">{{ sel.text }}</div>
@@ -217,10 +210,6 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
 
   <AppDialog v-model="ruleOpen" :title="editing ? '編輯規則' : '新增規則'" :error="error" @submit="saveRule">
     <label class="field">名稱<input v-model="form.name" type="text" maxlength="40" required></label>
-    <div class="row" role="group" aria-label="對象">
-      <button type="button" class="chip" :aria-pressed="form.channel === 'comment'" @click="form.channel = 'comment'; loadRemotePosts()">留言</button>
-      <button type="button" class="chip" :aria-pressed="form.channel === 'message'" @click="form.channel = 'message'">私訊</button>
-    </div>
     <div class="row" style="align-items: flex-end">
       <label class="field grow">群組
         <select v-model="form.groupId" @change="form.accountId = null; pickAccount()">
@@ -234,7 +223,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
         </select>
       </label>
     </div>
-    <label v-if="form.channel === 'comment' && form.accountId != null && remoteState !== 'error'" class="field">貼文
+    <label v-if="form.accountId != null && remoteState !== 'error'" class="field">貼文
       <select v-model="form.externalPostId" :disabled="remoteState === 'loading'" @change="pickPost">
         <option value="">{{ remoteState === 'loading' ? '載入中…' : '全部貼文' }}</option>
         <option v-for="p in postOptions" :key="p.id" :value="p.id">{{ p.text || '（沒有文字的貼文）' }}</option>
@@ -242,7 +231,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
     </label>
     <div class="row" style="align-items: flex-end">
       <label class="field grow">觸發
-        <select v-model="form.matchType"><option value="keyword">含關鍵字</option><option value="any">任何{{ noun(form.channel) }}</option></select>
+        <select v-model="form.matchType"><option value="keyword">含關鍵字</option><option value="any">任何留言</option></select>
       </label>
       <label v-if="form.matchType === 'keyword'" class="field grow">關鍵字（逗號分隔）
         <input v-model="form.keywords" type="text" maxlength="200" required>
@@ -251,22 +240,16 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
     <label class="field">回覆內容（一行一句，輪流使用）
       <textarea v-model="form.repliesText" rows="4" required />
     </label>
-    <template v-if="form.channel === 'comment'">
-      <label class="check"><input type="checkbox" :checked="form.action === 'reply_dm'" @change="form.action = form.action === 'reply_dm' ? 'reply' : 'reply_dm'">同時私訊留言者</label>
-      <label v-if="form.action === 'reply_dm'" class="field">私訊內容
-        <textarea v-model="form.dmText" rows="3" maxlength="1000" required />
-      </label>
-    </template>
+    <label class="check"><input type="checkbox" :checked="form.action === 'reply_dm'" @change="form.action = form.action === 'reply_dm' ? 'reply' : 'reply_dm'">同時私訊留言者</label>
+    <label v-if="form.action === 'reply_dm'" class="field">私訊內容
+      <textarea v-model="form.dmText" rows="3" maxlength="1000" required />
+    </label>
     <template v-if="editing" #actions>
       <button type="button" class="btn danger" style="margin-right: auto" @click="removeRule">刪除</button>
     </template>
   </AppDialog>
 
   <AppDialog v-model="commentOpen" title="手動貼入" submit-label="套用規則" :error="error" @submit="saveComment">
-    <div class="row" role="group" aria-label="類型">
-      <button type="button" class="chip" :aria-pressed="cform.kind === 'comment'" @click="cform.kind = 'comment'">留言</button>
-      <button type="button" class="chip" :aria-pressed="cform.kind === 'message'" @click="cform.kind = 'message'">私訊</button>
-    </div>
     <label class="field">帳號
       <select v-model="cform.accountId">
         <template v-for="g in boot.groups" :key="g.id">
@@ -274,7 +257,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
         </template>
       </select>
     </label>
-    <label v-if="cform.kind === 'comment'" class="field">貼文標題（選填）<input v-model="cform.postTitle" type="text" maxlength="120"></label>
+    <label class="field">貼文標題（選填）<input v-model="cform.postTitle" type="text" maxlength="120"></label>
     <label class="field">對方<input v-model="cform.author" type="text" maxlength="80" required placeholder="@username"></label>
     <label class="field">內容<textarea v-model="cform.text" rows="3" maxlength="2000" required /></label>
   </AppDialog>

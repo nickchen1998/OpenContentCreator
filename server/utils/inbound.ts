@@ -21,7 +21,7 @@ export async function ownedConnection(uid: number, accountId: number) {
 
 /**
  * 把選好的固定回覆真的送到平台上。成功 → sent；失敗 → 維持 ready 並記下平台回的錯誤，可以在頁面上重送。
- * 留言：公開回覆，規則有私訊的話再送一則 private reply。私訊：直接回覆對方。
+ * 公開回覆留言，規則有設私訊的話再送一則 private reply 給留言者。
  */
 export async function deliver(platform: MetaPlatform, connection: Connection, row: CommentRecord) {
   const db = useDb()
@@ -29,19 +29,14 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
   let error = ''
   try {
     const token = await unseal(connection.tokenEnc)
-    if (row.kind === 'message') {
-      await sendMessage(platform, token, connection.externalId, row.senderId, row.replyText)
-    }
-    else {
-      await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
-      if (row.dmText) {
-        // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因
-        try {
-          await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
-        }
-        catch (e) {
-          error = `留言已回覆，但私訊失敗：${messageOf(e)}`
-        }
+    await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
+    if (row.dmText) {
+      // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因
+      try {
+        await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
+      }
+      catch (e) {
+        error = `留言已回覆，但私訊失敗：${messageOf(e)}`
       }
     }
   }
@@ -59,7 +54,7 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : '送出失敗').slice(0, 300)
 
 interface InboundEvent {
-  kind: 'comment' | 'message'
+  kind: 'comment'
   externalId: string
   senderId: string
   author: string
@@ -109,10 +104,6 @@ export function eventsOf(platform: 'instagram' | 'facebook', entry: any): Inboun
       events.push({ kind: 'comment', externalId: String(v.comment_id ?? ''), senderId: String(v.from?.id ?? ''), author: String(v.from?.name ?? '（未知）'), text: String(v.message ?? ''), externalPostId: String(v.post_id ?? '') })
     }
   }
-  for (const m of entry?.messaging ?? []) {
-    // is_echo 是我們自己送出去的訊息
-    if (!m?.message?.text || m.message.is_echo) continue
-    events.push({ kind: 'message', externalId: String(m.message.mid ?? ''), senderId: String(m.sender?.id ?? ''), author: String(m.sender?.id ?? ''), text: String(m.message.text) })
-  }
+  // 私訊不處理：這個系統只做「留言 → 回覆留言＋私訊留言者」，不做私訊自動回覆（使用者的決定）
   return events
 }
