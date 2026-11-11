@@ -46,6 +46,9 @@
   兩個都沒填就只記錄留言。`collections.enabled` 是舊欄位，一律是 true，不要再加回 checkbox。
 - 同步時會補抓系列文裡各貼文的既有留言（`importSeriesComments`）：**只記錄、不自動送出**，命中的標成待送出，由會員決定要不要回。
   不要改成自動送出，否則把一篇已有大量留言的貼文加進系列文會一口氣對所有人回覆加私訊。
+- **頁面會自動更新**：`useAutoRefresh`（儀表板、系列文清單與成效頁、串文管理）每 30 秒打一次 `/api/changes` 拿指紋，有變才重新載入，
+  分頁在背景時暫停。不做 SSE：Worker 的請求之間沒辦法互相通知，要真推送得加 Durable Object（使用者同意先用輪詢）。
+  新增會影響畫面的資料時，記得讓 `/api/changes` 的指紋跟著變。
 - 圖表用 Chart.js，包在 `app/components/BarChart.vue`（只註冊長條圖用到的部分）。互動組成的四個顏色用 dataviz 的
   `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。每組圖表下面留一個「資料表」。
 - **留言紀錄是「對話」**：`comments.parent_external_id` 記它回覆哪一則、`comments.mine` 記是不是帳號自己發的（送出的回覆、在平台上自己回的、

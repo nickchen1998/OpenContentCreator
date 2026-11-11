@@ -59,6 +59,8 @@ async function pick(id: number) {
   if (fresh.warning) notify(fresh.warning)
 }
 onMounted(load)
+// 有新的回覆或狀態變動時自動更新（只讀已經記下的，不會每次都去打 Threads）
+useAutoRefresh(() => refresh())
 
 /** 右邊的對話有變動（回覆、不用回）：重新讀這則的對話，左邊的待回覆數字也跟著更新 */
 async function refresh() {

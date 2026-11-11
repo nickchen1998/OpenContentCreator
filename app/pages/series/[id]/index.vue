@@ -9,17 +9,19 @@ const settingsOpen = ref(false)
 const waitingOnly = ref(false)
 const backToList = () => navigateTo('/series')
 
-async function load() {
+async function load(quiet = false) {
   try {
     const data = await api<{ series: Series, comments: CommentRow[] }>(`/api/series/${id}`)
     series.value = data.series
     comments.value = data.comments
   }
   catch {
-    missing.value = true
+    // 自動更新時遇到暫時的錯誤就維持原本的畫面，不要變成「找不到」
+    if (!quiet) missing.value = true
   }
 }
-onMounted(load)
+onMounted(() => load())
+useAutoRefresh(() => load(true))
 
 const totals = computed(() => totalsOf(series.value?.posts ?? []))
 const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
@@ -131,11 +133,11 @@ const partsSummary = computed(() => `各貼文互動組成：${(series.value?.po
           <h2>留言紀錄</h2>
           <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
         </div>
-        <ConversationList :rows="comments" show-platform :waiting-only="waitingOnly" @changed="load" />
+        <ConversationList :rows="comments" show-platform :waiting-only="waitingOnly" @changed="load()" />
       </section>
     </div>
 
-    <SeriesDialog v-model="settingsOpen" :series="series" @saved="load" @deleted="backToList" />
+    <SeriesDialog v-model="settingsOpen" :series="series" @saved="load()" @deleted="backToList" />
   </template>
   <div v-else class="empty">載入中…</div>
 </template>
