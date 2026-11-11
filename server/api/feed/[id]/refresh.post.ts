@@ -23,6 +23,8 @@ export default defineEventHandler(async (event) => {
       const set = m.views > 0 ? m : { likes: m.likes, comments: m.comments }
       const [row] = await useDb().update(accountPosts).set({ ...set, insightsAt: nowIso() }).where(eq(accountPosts.id, post.id)).returning()
       if (row) metrics = { views: row.views, likes: row.likes, comments: row.comments, shares: row.shares, saves: row.saves }
+      // 今天的數字記一筆（成長趨勢用）；記不成不影響這次同步
+      await snapshotPostStats(eq(accountPosts.id, post.id)).catch(() => {})
     }
   }
   catch (e) {
