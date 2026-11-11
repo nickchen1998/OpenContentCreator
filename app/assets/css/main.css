@@ -300,8 +300,6 @@ table.compact .bar-track { min-width: 70px; }
 .thread-item[aria-pressed="true"] { background: var(--green-soft); }
 .thread-text { font-size: 14.5px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .thread-full { margin: 0; max-height: 4.8em; overflow-y: auto; }
-.thread-series { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-radius: var(--radius-field); background: var(--green-faint); }
-.thread-series select { flex: 1 1 180px; min-height: 40px; }
 
 /* ---- 對話卡片與整串對話（ConversationList）---- */
 .conv { display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; min-height: 0; }

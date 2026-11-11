@@ -277,6 +277,8 @@ export interface RemotePostStats {
   likes?: number
   comments?: number
   shares?: number
+  /** Threads 的轉發：不是自己的貼文，不收進來（已經收過的會刪掉） */
+  repost?: boolean
 }
 
 /** 帳號最近的貼文，連同列表本身就附帶的數字（一個請求）。觀看、分享、收藏要另外用 fetchInsights 逐則抓 */
@@ -290,8 +292,13 @@ export async function listPostsWithStats(platform: MetaPlatform, token: string, 
     return (data.data ?? []).map((p: any) => ({ id: String(p.id), url: String(p.permalink ?? ''), text: clip(p.caption), publishedAt: iso(p.timestamp), likes: num(p.like_count), comments: num(p.comments_count) }))
   }
   if (platform === 'threads') {
-    const data = await call(platform, token, `/${selfId}/threads`, { query: { fields: 'id,permalink,text,timestamp', limit: String(limit) } })
-    return (data.data ?? []).map((p: any) => ({ id: String(p.id), url: String(p.permalink ?? ''), text: clip(p.text), publishedAt: iso(p.timestamp) }))
+    // /threads 會連「轉發別人的貼文」一起回來（media_type 是 REPOST_FACADE，沒有文字）；只有圖片或影片的貼文也沒有文字，標出類型才認得出來
+    const data = await call(platform, token, `/${selfId}/threads`, { query: { fields: 'id,permalink,text,timestamp,media_type', limit: String(limit) } })
+    const kind: Record<string, string> = { IMAGE: '（圖片）', VIDEO: '（影片）', CAROUSEL_ALBUM: '（多張圖片）', AUDIO: '（語音）' }
+    return (data.data ?? []).map((p: any) => ({
+      id: String(p.id), url: String(p.permalink ?? ''), text: clip(p.text) || kind[String(p.media_type ?? '')] || '', publishedAt: iso(p.timestamp),
+      repost: p.media_type === 'REPOST_FACADE',
+    }))
   }
   const data = await call(platform, token, `/${selfId}/posts`, {
     query: { fields: 'id,permalink_url,message,created_time,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)', limit: String(limit) },
