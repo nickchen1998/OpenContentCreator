@@ -37,7 +37,6 @@ async function submit() {
       </label>
       <div v-if="error" class="error" role="alert">{{ error }}</div>
       <button type="submit" class="btn primary" :disabled="busy">登入</button>
-      <p class="small muted" style="text-align: center">帳號由管理員建立，沒有開放註冊。</p>
     </form>
   </div>
 </template>

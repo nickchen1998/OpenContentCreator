@@ -129,12 +129,6 @@ const TOOLS = [
 </script>
 
 <template>
-  <div class="col">
-    <p class="en-label">Connections · MCP 連線</p>
-    <h1>MCP 連線與排程協調</h1>
-    <div class="lead">每個專案的 Claude 用自己的 token 連進來，只看得到被授權的帳號群組，也只能送提案；是否排入由你決定。</div>
-  </div>
-
   <section class="card">
     <div class="row between">
       <h2>提案佇列</h2>
@@ -163,7 +157,7 @@ const TOOLS = [
         </div>
       </div>
     </div>
-    <div v-if="!proposals.length" class="empty">目前沒有待處理的提案。</div>
+    <div v-if="!proposals.length" class="empty">沒有待處理的提案</div>
   </section>
 
   <div class="grid-2">
@@ -179,7 +173,7 @@ const TOOLS = [
           <button type="button" class="btn" :aria-label="`編輯 ${p.name}`" @click="openProject(p)">編輯</button>
         </div>
       </div>
-      <div v-if="!boot.projects.length" class="empty">還沒有專案。</div>
+      <div v-if="!boot.projects.length" class="empty">還沒有專案</div>
       <div class="col" style="gap: 8px; border-top: 1px solid var(--line); padding-top: 14px">
         <div class="small muted">MCP 端點</div>
         <div class="row"><code class="box grow wrap-any">{{ endpoint }}</code><button type="button" class="btn" @click="copy(endpoint)">複製</button></div>
@@ -189,18 +183,16 @@ const TOOLS = [
     <section class="card">
       <h2>協調規則</h2>
       <div class="col divided" style="gap: 12px">
-        <div>專案只能讀取、提案到被授權的群組</div>
-        <div>同一個帳號的兩則貼文至少間隔 {{ boot.rules.minGapHours }} 小時；不同群組的帳號互不影響</div>
-        <div>每個帳號每天最多 {{ boot.rules.maxPerDay }} 則</div>
-        <div>撞期時依群組內的專案優先序讓位，並自動提出替代時段</div>
-        <div>所有提案都要你確認後才排入</div>
+        <div class="row between"><span>同帳號兩則貼文的間隔</span><b>{{ boot.rules.minGapHours }} 小時</b></div>
+        <div class="row between"><span>每個帳號每天最多</span><b>{{ boot.rules.maxPerDay }} 則</b></div>
+        <div class="row between"><span>每個帳號每小時自動回覆上限</span><b>{{ boot.rules.replyPerHour }} 則</b></div>
       </div>
       <button type="button" class="btn" style="align-self: flex-start" @click="openRules">編輯規則</button>
     </section>
   </div>
 
   <section class="card">
-    <h2>提供給各專案的工具</h2>
+    <h2>專案可用的工具</h2>
     <div class="table-scroll">
       <table style="min-width: 640px">
         <thead><tr><th scope="col">工具</th><th scope="col">用途</th><th scope="col">類型</th></tr></thead>
@@ -235,7 +227,7 @@ const TOOLS = [
           <label class="check small"><input v-model="pform.grants[g.id]!.canReadInsights" type="checkbox">可讀成效</label>
         </template>
       </div>
-      <div v-if="!boot.groups.length" class="note">還沒有群組，請先到「帳號群組」建立。</div>
+      <div v-if="!boot.groups.length" class="note">還沒有群組</div>
     </fieldset>
     <template v-if="editing" #actions>
       <button type="button" class="btn danger" @click="removeProject">刪除</button>
@@ -244,15 +236,15 @@ const TOOLS = [
   </AppDialog>
 
   <AppDialog v-model="tokenOpen" title="專案的 MCP token" submit-label="" :error="''">
-    <div class="note"><b>這個 token 只會顯示這一次</b>，關掉後就看不到了（資料庫只存雜湊）。遺失的話到專案的「編輯」重新產生。</div>
+    <div class="note bold">只會顯示這一次</div>
     <div class="row"><code class="box grow wrap-any">{{ newToken }}</code><button type="button" class="btn" @click="copy(newToken)">複製</button></div>
-    <div class="small muted">在該專案的資料夾執行這行，把 OpenContentCreator 接到 Claude Code：</div>
+    <div class="small muted">在專案資料夾執行</div>
     <div class="row"><code class="box grow wrap-any">{{ command }}</code><button type="button" class="btn" @click="copy(command)">複製</button></div>
   </AppDialog>
 
   <AppDialog v-model="rulesOpen" title="編輯協調規則" :error="error" @submit="saveRules">
-    <label class="field">同一個帳號兩則貼文的最小間隔（小時，0 表示不限制）<input v-model.number="rform.minGapHours" type="number" min="0" max="72" required></label>
-    <label class="field">每個帳號每天最多幾則（0 表示不限制）<input v-model.number="rform.maxPerDay" type="number" min="0" max="50" required></label>
-    <label class="field">每個帳號每小時自動回覆上限（0 表示不限制）<input v-model.number="rform.replyPerHour" type="number" min="0" max="1000" required></label>
+    <label class="field">同帳號兩則貼文的間隔（小時，0 = 不限）<input v-model.number="rform.minGapHours" type="number" min="0" max="72" required></label>
+    <label class="field">每個帳號每天最多幾則（0 = 不限）<input v-model.number="rform.maxPerDay" type="number" min="0" max="50" required></label>
+    <label class="field">每個帳號每小時自動回覆上限（0 = 不限）<input v-model.number="rform.replyPerHour" type="number" min="0" max="1000" required></label>
   </AppDialog>
 </template>

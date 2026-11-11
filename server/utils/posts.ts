@@ -16,7 +16,7 @@ export async function loadPosts(boot: Boot, where: SQL | undefined): Promise<Pos
     loadSlots(boot, addDays(days[0]!, -1), addDays(days.at(-1)!, 1)),
   ])
   return rows.map((r) => {
-    const mine = targets.filter(t => t.postId === r.id).map(({ postId: _, ...t }) => t)
+    const mine = targets.filter(t => t.postId === r.id).map(({ postId: _, externalPostId: __, ...t }) => t)
     const active = r.status === 'scheduled' || r.status === 'pending'
     return {
       ...r,

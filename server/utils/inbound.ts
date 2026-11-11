@@ -1,0 +1,118 @@
+import { and, eq } from 'drizzle-orm'
+import { accounts, comments, connections, groups } from '../database/schema'
+
+type Connection = typeof connections.$inferSelect
+type CommentRecord = typeof comments.$inferSelect
+
+/** 某個會員名下、對應平台上某個帳號的連結（webhook 的 entry.id → connection） */
+export async function findConnection(uid: number, platform: string, externalId: string) {
+  const [row] = await useDb().select({ connection: connections }).from(connections)
+    .innerJoin(accounts, eq(accounts.id, connections.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
+    .where(and(eq(groups.ownerId, uid), eq(accounts.platform, platform), eq(connections.externalId, externalId)))
+  return row?.connection
+}
+
+export async function ownedConnection(uid: number, accountId: number) {
+  const [row] = await useDb().select({ connection: connections, platform: accounts.platform }).from(connections)
+    .innerJoin(accounts, eq(accounts.id, connections.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
+    .where(and(eq(groups.ownerId, uid), eq(connections.accountId, accountId)))
+  return row
+}
+
+/**
+ * 把選好的固定回覆真的送到平台上。成功 → sent；失敗 → 維持 ready 並記下平台回的錯誤，可以在頁面上重送。
+ * 留言：公開回覆，規則有私訊的話再送一則 private reply。私訊：直接回覆對方。
+ */
+export async function deliver(platform: MetaPlatform, connection: Connection, row: CommentRecord) {
+  const db = useDb()
+  if (row.status !== 'ready' || !row.externalId) return row
+  let error = ''
+  try {
+    const token = await unseal(connection.tokenEnc)
+    if (row.kind === 'message') {
+      await sendMessage(platform, token, connection.externalId, row.senderId, row.replyText)
+    }
+    else {
+      await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
+      if (row.dmText) {
+        // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因
+        try {
+          await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
+        }
+        catch (e) {
+          error = `留言已回覆，但私訊失敗：${messageOf(e)}`
+        }
+      }
+    }
+  }
+  catch (e) {
+    const [failed] = await db.update(comments).set({ error: messageOf(e) }).where(eq(comments.id, row.id)).returning()
+    await db.update(connections).set({ lastError: messageOf(e) }).where(eq(connections.id, connection.id))
+    return failed!
+  }
+  const [sent] = await db.update(comments).set({ status: 'sent', error }).where(eq(comments.id, row.id)).returning()
+  // 送成功了，之前留下的「連結異常」就可以清掉
+  if (connection.lastError) await db.update(connections).set({ lastError: '' }).where(eq(connections.id, connection.id))
+  return sent!
+}
+
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : '送出失敗').slice(0, 300)
+
+interface InboundEvent {
+  kind: 'comment' | 'message'
+  externalId: string
+  senderId: string
+  author: string
+  text: string
+  externalPostId?: string
+  /** 已經知道貼文內容的話直接帶進來，省一次 API */
+  postTitle?: string
+}
+
+/** 從 webhook（或 Threads 輪詢）收進一則留言或私訊：去重 → 跑規則 → 連結開著自動送出就直接回 */
+export async function receive(boot: Boot, platform: MetaPlatform, connection: Connection, event: InboundEvent) {
+  const db = useDb()
+  // 自己發的（包含我們剛送出的回覆）不處理，否則會自己回自己
+  const self = event.senderId === connection.externalId || event.senderId === connection.externalName
+  if (!event.externalId || !event.text.trim() || self) return
+  const [seen] = await db.select({ id: comments.id }).from(comments)
+    .where(and(eq(comments.accountId, connection.accountId), eq(comments.externalId, event.externalId)))
+  if (seen) return // Meta 會重送同一個事件
+
+  let postTitle = event.postTitle ?? ''
+  if (!postTitle && event.kind === 'comment' && event.externalPostId) {
+    postTitle = await postCaption(platform, await unseal(connection.tokenEnc), event.externalPostId)
+  }
+  let row: CommentRecord
+  try {
+    row = await processComment(boot, { accountId: connection.accountId, ...event, postTitle })
+  }
+  catch (e) {
+    // 兩個重送的事件同時進來時，後到的會撞到 (account_id, external_id) 的唯一索引
+    if (/UNIQUE/i.test(String((e as Error)?.cause ?? e))) return
+    throw e
+  }
+  await db.update(connections).set({ lastEventAt: nowIso() }).where(eq(connections.id, connection.id))
+  if (row.status === 'ready' && connection.autoSend) await deliver(platform, connection, row)
+}
+
+/** 把 Meta webhook 的一個 entry 拆成留言與私訊事件。Instagram 與 Facebook 粉專的格式不同 */
+export function eventsOf(platform: 'instagram' | 'facebook', entry: any): InboundEvent[] {
+  const events: InboundEvent[] = []
+  for (const change of entry?.changes ?? []) {
+    const v = change?.value ?? {}
+    if (platform === 'instagram' && change.field === 'comments') {
+      events.push({ kind: 'comment', externalId: String(v.id ?? ''), senderId: String(v.from?.id ?? ''), author: v.from?.username ? `@${v.from.username}` : '（未知）', text: String(v.text ?? ''), externalPostId: String(v.media?.id ?? '') })
+    }
+    // 粉專的 feed 事件什麼都有（貼文、按讚、編輯…），只收「新增留言」
+    if (platform === 'facebook' && change.field === 'feed' && v.item === 'comment' && v.verb === 'add') {
+      events.push({ kind: 'comment', externalId: String(v.comment_id ?? ''), senderId: String(v.from?.id ?? ''), author: String(v.from?.name ?? '（未知）'), text: String(v.message ?? ''), externalPostId: String(v.post_id ?? '') })
+    }
+  }
+  for (const m of entry?.messaging ?? []) {
+    // is_echo 是我們自己送出去的訊息
+    if (!m?.message?.text || m.message.is_echo) continue
+    events.push({ kind: 'message', externalId: String(m.message.mid ?? ''), senderId: String(m.sender?.id ?? ''), author: String(m.sender?.id ?? ''), text: String(m.message.text) })
+  }
+  return events
+}

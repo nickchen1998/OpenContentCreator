@@ -6,6 +6,8 @@
   "compatibility_date": "2026-10-19",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // 每 5 分鐘輪詢 Threads 回覆；每 30 分鐘同步成效、換新 token（server/plugins/scheduled.ts）
+  "triggers": { "crons": ["*/5 * * * *", "11,41 * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",

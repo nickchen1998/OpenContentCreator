@@ -39,11 +39,7 @@ function saved() {
 
 <template>
   <div class="row between gap-lg">
-    <div class="col">
-      <p class="en-label">Schedule · 排程週曆</p>
-      <h1>排程</h1>
-      <div class="muted">{{ weekStart.slice(0, 4) }}/{{ fmtDayFull(weekStart) }}– {{ fmtDayFull(addDays(weekStart, 6)) }}</div>
-    </div>
+    <h2>{{ weekStart.slice(0, 4) }}/{{ fmtDayFull(weekStart) }}– {{ fmtDayFull(addDays(weekStart, 6)) }}</h2>
     <div class="row">
       <button type="button" class="btn" @click="weekStart = addDays(weekStart, -7)">上一週</button>
       <button type="button" class="btn" :disabled="weekStart === mondayOf(today)" @click="weekStart = mondayOf(today)">本週</button>
@@ -54,7 +50,7 @@ function saved() {
 
   <div class="stats" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
     <div class="stat"><span class="small muted">已規劃</span><b>{{ count('ok') }} 則</b></div>
-    <div class="stat"><span class="small muted">待確認的專案提案</span><b>{{ count('pending') }} 則</b></div>
+    <div class="stat"><span class="small muted">待確認</span><b>{{ count('pending') }} 則</b></div>
     <div class="stat"><span class="small muted">時段衝突</span><b :style="count('conflict') ? 'color: var(--danger)' : ''">{{ count('conflict') }} 則</b></div>
   </div>
 
@@ -93,10 +89,6 @@ function saved() {
     </div>
   </div>
 
-  <div class="card" style="flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 16px 20px">
-    <div class="grow note" style="flex-basis: 420px">這份排程是發文計畫，系統不會代發：點貼文標題可以進去下載素材、複製文案，發出後把連結貼回來並登錄成效。虛線卡片是其他專案透過 MCP 送來的提案，確認後才會進入排程；紅色卡片與同一個帳號的既有貼文撞期。不同群組的帳號各自計算，不會互相撞期。</div>
-    <NuxtLink to="/connections" class="btn outline">前往處理提案</NuxtLink>
-  </div>
 
   <PostForm v-model="formOpen" :default-day="weekStart <= today && today <= addDays(weekStart, 6) ? today : weekStart" @saved="saved" />
 </template>

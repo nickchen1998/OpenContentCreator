@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { comments } from '../../database/schema'
+import { comments } from '../../../database/schema'
 
 export default defineEventHandler(async (event) => {
   await ownedComment(uidOf(event), idParam(event))

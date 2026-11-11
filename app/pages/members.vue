@@ -44,12 +44,6 @@ const isMe = (m: Member) => m.id === (user.value as { id?: number } | null)?.id
 </script>
 
 <template>
-  <header>
-    <p class="en-label">Members · 會員管理</p>
-    <h1>會員管理</h1>
-    <p class="lead">每個會員有自己的群組、貼文、素材、專案與規則，彼此看不到對方的資料。沒有開放註冊，帳號都從這裡建立。</p>
-  </header>
-
   <section v-if="issued" class="card warn fade-in">
     <div class="row between">
       <p class="card-title bold">{{ issued.kind === 'created' ? '帳號已建立' : '密碼已重設' }}：{{ issued.username }}</p>
@@ -61,7 +55,7 @@ const isMe = (m: Member) => m.id === (user.value as { id?: number } | null)?.id
     </div>
     <div class="row" style="gap: 12px">
       <button class="btn primary" type="button" @click="copyCredentials">{{ copied ? '已複製' : '複製登入資訊' }}</button>
-      <span class="small" style="color: var(--warn)">這組密碼只會顯示這一次，關閉後就看不到了。請對方登入後自己改密碼。</span>
+      <span class="small" style="color: var(--warn)">密碼只會顯示這一次</span>
     </div>
   </section>
 
@@ -69,7 +63,7 @@ const isMe = (m: Member) => m.id === (user.value as { id?: number } | null)?.id
     <p class="en-label">New member</p>
     <h2 style="margin-top: -6px">建立帳號</h2>
     <form class="row" style="align-items: flex-end; gap: 12px" @submit.prevent="create">
-      <label class="field" style="flex: 1 1 260px">帳號（3–32 個英數字，可含 _ . -）
+      <label class="field" style="flex: 1 1 260px">帳號
         <input v-model="username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" required>
       </label>
       <button class="btn primary" type="submit" :disabled="busy || !username.trim()">建立並產生密碼</button>
