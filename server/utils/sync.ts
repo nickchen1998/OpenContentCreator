@@ -45,10 +45,10 @@ export async function syncAccountPosts(platform: LinkedPlatform, connection: Con
         .onConflictDoUpdate({ target: [accountPosts.accountId, accountPosts.externalId], set: base })
     }))
     // 粉絲數一天記一次（今天記過就不會再打平台）
-    await recordFollowers(platform, connection, token).catch(() => {})
+    const followerError = await recordFollowers(platform, connection, token).catch(e => `讀不到粉絲數：${(e as Error).message}`)
     // 系列文裡的貼文順便補抓既有留言（只記錄，不自動回覆）
     const commentError = ownerId != null && (platform === 'instagram' || platform === 'facebook') ? await importSeriesComments(platform, connection, token, ownerId) : ''
-    const lastError = (insightError ? `讀不到觀看數等成效：${insightError}` : commentError).slice(0, 300)
+    const lastError = (insightError ? `讀不到觀看數等成效：${insightError}` : commentError || followerError).slice(0, 300)
     await db.update(connections).set({ lastSyncedAt: now, lastError }).where(eq(connections.id, connection.id))
     return { posts: remote.length, error: lastError }
   }

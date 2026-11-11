@@ -50,6 +50,11 @@ export async function ownedAccount(uid: number, id: number) {
 export async function deleteUserData(uid: number) {
   const db = useDb()
   const keys = await db.select({ key: assets.r2Key }).from(assets).innerJoin(posts, eq(posts.id, assets.postId)).where(eq(posts.ownerId, uid))
+  // 公開頁面的頭像與背景圖也在 R2（資料列會跟著會員 cascade 刪掉，檔案要自己清）
+  const page = await loadPageRow(uid)
+  for (const key of new Set(page ? [page.draftAvatarKey, page.draftCoverKey, page.liveAvatarKey, page.liveCoverKey] : [])) {
+    if (key) keys.push({ key })
+  }
   await db.batch([
     db.delete(projects).where(eq(projects.ownerId, uid)),
     db.delete(users).where(eq(users.id, uid)),
