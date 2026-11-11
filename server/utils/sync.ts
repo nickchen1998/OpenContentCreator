@@ -68,6 +68,11 @@ async function importSeriesComments(platform: 'instagram' | 'facebook', connecti
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId))).orderBy(sql`${comments.id} desc`).limit(1000),
     ])
     if (!targets.length) return ''
+    // 貼文加進系列文之前就記下的留言，補上所屬的系列文，留言紀錄才看得到
+    await db.run(sql`update comments set collection_id = (
+      select cp.collection_id from collection_posts cp join account_posts p on p.id = cp.post_id
+      where p.account_id = comments.account_id and p.external_id = comments.external_post_id
+    ) where account_id = ${connection.accountId} and collection_id is null and external_post_id != ''`)
     const seen = new Set(seenRows.map(r => r.externalId))
     let boot: OwnedBoot | undefined
     let imported = 0

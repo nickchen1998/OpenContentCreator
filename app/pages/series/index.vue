@@ -22,7 +22,7 @@ const cards = computed(() => series.value.map((s) => {
     <button type="button" class="btn primary" @click="createOpen = true">新增系列文</button>
   </div>
 
-  <div class="series-grid">
+  <div class="series-grid fill scroll">
     <NuxtLink v-for="s in cards" :key="s.id" :to="`/series/${s.id}`" class="series-card" :aria-label="`系列文 ${s.name}`">
       <div class="series-card-head">
         <h2 class="wrap-any">{{ s.name }}</h2>

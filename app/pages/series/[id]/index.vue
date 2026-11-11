@@ -35,7 +35,7 @@ const stateOf = (c: CommentRow) => {
   if (c.status === 'sent') return { label: c.dmText ? '已回覆＋私訊' : '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
   if (c.status === 'ready') return { label: '待送出', style: 'background: var(--warn-bg); color: var(--warn)' }
   if (c.status === 'handled') return { label: '已處理', style: 'background: var(--chip-bg); color: var(--muted)' }
-  return { label: c.status === 'unmatched' ? '沒有關鍵字' : '已回過，不重複', style: 'background: var(--chip-bg); color: var(--muted)' }
+  return { label: '未回覆', style: 'background: var(--chip-bg); color: var(--muted)' }
 }
 const filtered = computed(() => comments.value.filter(c =>
   filter.value === 'all' || (filter.value === 'failed' ? failed(c) || dmFailed(c) : c.status === 'unmatched' || c.status === 'skipped' || c.status === 'ready')))
@@ -69,7 +69,9 @@ const postLabels = computed(() => {
 })
 const viewsData = computed(() => [{ label: '觀看', data: (series.value?.posts ?? []).map(p => p.views), color: SERIES_GREEN }])
 const partsData = computed(() => PARTS.map(part => ({ label: part.label, data: (series.value?.posts ?? []).map(p => p[part.key]), color: part.color })))
-const rowsHeight = computed(() => Math.max(110, (series.value?.posts.length ?? 0) * 46 + 44))
+// 橫條圖的高度跟著貼文數走，但有上限：貼文很多時寧可條細一點，也不要把頁面撐長
+const rowsHeight = computed(() => Math.min(190, Math.max(84, (series.value?.posts.length ?? 0) * 30 + 34)))
+const view = ref<'chart' | 'table'>('chart')
 const daily = computed(() => {
   const today = todayTaipei()
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13))
@@ -117,47 +119,50 @@ async function remove(c: CommentRow) {
       <div class="stat"><span class="small muted">私訊送出</span><b>{{ fmtNum(series.dms) }} 則</b></div>
     </div>
 
-    <div class="grid-2 series-detail">
+    <div class="fit-grid cols-2 fill">
       <section class="card">
-        <h2>成效統計</h2>
-        <template v-if="series.posts.length">
-          <div class="col" style="gap: 6px">
+        <div class="row between">
+          <h2>成效統計</h2>
+          <div v-if="series.posts.length" class="seg" role="group" aria-label="顯示方式">
+            <button type="button" :aria-pressed="view === 'chart'" @click="view = 'chart'">圖表</button>
+            <button type="button" :aria-pressed="view === 'table'" @click="view = 'table'">資料表</button>
+          </div>
+        </div>
+        <div v-if="!series.posts.length" class="empty">還沒有貼文　<button type="button" class="btn-text" @click="settingsOpen = true">加入貼文</button></div>
+        <div v-else-if="view === 'chart'" class="charts fill scroll">
+          <div class="col" style="gap: 4px">
             <h3 class="chart-title">各貼文觀看</h3>
-            <BarChart horizontal value-labels :labels="postLabels" :datasets="viewsData" :height="rowsHeight - 30" :summary="viewsSummary" />
+            <BarChart horizontal value-labels :labels="postLabels" :datasets="viewsData" :height="rowsHeight" :summary="viewsSummary" />
           </div>
-          <div class="col" style="gap: 6px">
+          <div class="col" style="gap: 4px">
             <h3 class="chart-title">互動組成</h3>
-            <BarChart horizontal stacked :labels="postLabels" :datasets="partsData" :height="rowsHeight + 14" :summary="partsSummary" />
+            <BarChart horizontal stacked :labels="postLabels" :datasets="partsData" :height="rowsHeight + 34" :summary="partsSummary" />
           </div>
-          <div class="col" style="gap: 6px">
+          <div class="chart-fill">
             <h3 class="chart-title">每日留言<span class="small muted" style="font-weight: 400">　近 14 天</span></h3>
-            <BarChart value-labels :labels="daily.labels" :datasets="daily.data" :height="170" :summary="`近 14 天每日留言數，合計 ${daily.total} 則`" />
+            <BarChart fill value-labels :labels="daily.labels" :datasets="daily.data" :summary="`近 14 天每日留言數，合計 ${daily.total} 則`" />
           </div>
-          <details>
-            <summary class="small" style="cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--green-deep)">資料表</summary>
-            <div class="table-scroll">
-              <table style="min-width: 560px">
-                <thead>
-                  <tr><th scope="col">貼文</th><th scope="col">發佈</th><th scope="col">觀看</th><th scope="col">按讚</th><th scope="col">留言</th><th scope="col">分享</th><th scope="col">收藏</th></tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(p, i) in series.posts" :key="p.id">
-                    <th scope="row">{{ postLabels[i] }}
-                      <div class="small" style="font-weight: 400"><a :href="p.url" target="_blank" rel="noopener noreferrer" style="color: var(--muted)">{{ p.text || '（沒有文字的貼文）' }}</a></div>
-                    </th>
-                    <td style="white-space: nowrap">{{ dayOf(p.publishedAt) }}</td>
-                    <td>{{ fmtNum(p.views) }}</td>
-                    <td>{{ fmtNum(p.likes) }}</td>
-                    <td>{{ fmtNum(p.comments) }}</td>
-                    <td>{{ fmtNum(p.shares) }}</td>
-                    <td>{{ fmtNum(p.saves) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </details>
-        </template>
-        <div v-else class="empty">還沒有貼文　<button type="button" class="btn-text" @click="settingsOpen = true">加入貼文</button></div>
+        </div>
+        <div v-else class="table-scroll fill scroll">
+          <table style="min-width: 520px">
+            <thead>
+              <tr><th scope="col">貼文</th><th scope="col">發佈</th><th scope="col">觀看</th><th scope="col">按讚</th><th scope="col">留言</th><th scope="col">分享</th><th scope="col">收藏</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(p, i) in series.posts" :key="p.id">
+                <th scope="row">{{ postLabels[i] }}
+                  <div class="small" style="font-weight: 400"><a :href="p.url" target="_blank" rel="noopener noreferrer" style="color: var(--muted)">{{ p.text || '（沒有文字的貼文）' }}</a></div>
+                </th>
+                <td style="white-space: nowrap">{{ dayOf(p.publishedAt) }}</td>
+                <td>{{ fmtNum(p.views) }}</td>
+                <td>{{ fmtNum(p.likes) }}</td>
+                <td>{{ fmtNum(p.comments) }}</td>
+                <td>{{ fmtNum(p.shares) }}</td>
+                <td>{{ fmtNum(p.saves) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section class="card">
@@ -170,7 +175,7 @@ async function remove(c: CommentRow) {
           </div>
         </div>
         <!-- 留言紀錄在自己的區塊裡捲動 -->
-        <div ref="logEl" class="comment-log" tabindex="0" aria-label="留言紀錄">
+        <div ref="logEl" class="comment-log fill scroll" tabindex="0" aria-label="留言紀錄">
           <div v-for="c in shown" :key="c.id" class="comment-item">
             <div class="row between" style="gap: 6px 12px">
               <span class="small muted">{{ accountLabel(c.accountId).split(' · ')[0] }} · {{ c.author }} · {{ timeOf(c.createdAt) }}</span>
@@ -178,6 +183,7 @@ async function remove(c: CommentRow) {
             </div>
             <span class="wrap-any">{{ c.text }}</span>
             <div v-if="c.error" class="error">{{ c.error }}</div>
+            <div v-else-if="c.status === 'unmatched' || c.status === 'skipped'" class="small muted">{{ c.reason }}</div>
             <div class="row">
               <button v-if="c.status === 'ready' && c.externalId" type="button" class="btn sm" :disabled="busyId === c.id" @click="send(c)">{{ c.error ? '重送' : '送出回覆' }}</button>
               <button type="button" class="btn sm" :aria-label="`刪除 ${c.author} 的留言紀錄`" @click="remove(c)">刪除</button>

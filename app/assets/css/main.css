@@ -238,3 +238,48 @@ dialog form { max-height: calc(100vh - 32px); overflow-y: auto; }
 .series-card-foot { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; padding-top: 14px; border-top: 1px solid var(--line); }
 .series-card-foot dt { font-size: 11px; color: var(--muted); }
 .series-card-foot dd { margin: 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---- 一頁一個畫面 ----
+   螢幕夠大時（桌機）整頁固定在視窗高度內、視窗本身不捲動，內容多的區塊在自己裡面捲。
+   螢幕太小（手機、很矮的視窗）塞不下，就退回一般的整頁捲動。 */
+.fit-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+.scroll { overscroll-behavior: contain; }
+@media (min-width: 1024px) and (min-height: 640px) {
+  .main { height: 100vh; }
+  .content { height: 100vh; overflow: hidden; padding: 24px 28px; gap: 14px; }
+  /* fill：吃掉剩下的高度；shrink：內容少就矮、內容多就縮到剩下的高度；scroll：在自己裡面捲 */
+  .fill { flex: 1 1 0; min-height: 0; }
+  .shrink { flex: 0 1 auto; min-height: 0; }
+  .scroll { overflow-y: auto; min-height: 0; }
+  .fit-grid { grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .fit-grid > * { min-height: 0; }
+  .fit-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fit-grid.cols-3-2 { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .fit-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .card { padding: 18px 22px; gap: 10px; }
+  .stat { padding: 12px 16px; }
+  .stat b { font-size: 22px; }
+  .comment-log { height: auto; }
+  .series-grid { align-content: start; padding: 2px; }
+  .week-scroll { display: flex; flex-direction: column; }
+  .week { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .day { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+}
+.charts { display: flex; flex-direction: column; gap: 12px; }
+.chart-fill { display: flex; flex-direction: column; gap: 6px; min-height: 150px; }
+@media (min-width: 1024px) and (min-height: 640px) {
+  .chart-fill { flex: 1 1 0; min-height: 110px; }
+}
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-pill); overflow: hidden; background: #fff; }
+.seg button { border: 0; background: none; padding: 6px 14px; font-size: 13px; color: var(--ink); min-height: 34px; }
+.seg button[aria-pressed="true"] { background: var(--green-deep); color: #fff; }
+
+/* 儀表板並排的兩張表：欄位擠一點，換取不用橫向捲動 */
+table.compact th, table.compact td { padding: 10px 8px; }
+table.compact th:first-child, table.compact td:first-child { padding-left: 0; }
+table.compact th:last-child, table.compact td:last-child { padding-right: 0; }
+table.compact .bar-track { min-width: 70px; }
+@media (min-width: 1024px) and (min-height: 640px) {
+  /* 貼文頁的發文狀態：平台多的時候最多占三分之一高，其餘在裡面捲，把空間留給素材與文案 */
+  .status-card { flex: 0 1 auto; min-height: 0; max-height: 34vh; }
+}

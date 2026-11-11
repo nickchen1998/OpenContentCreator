@@ -77,13 +77,14 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
     <div class="stat"><span class="small muted">私訊送出</span><b>{{ fmtNum(replies.dms) }} 則</b></div>
   </div>
 
+  <div class="fit-grid cols-3-2 fill">
   <section class="card">
     <div class="row between">
       <h2>系列文</h2>
       <NuxtLink to="/series" class="btn">管理系列文</NuxtLink>
     </div>
-    <div class="table-scroll">
-      <table style="min-width: 760px">
+    <div class="table-scroll fill scroll">
+      <table class="compact" style="min-width: 520px">
         <thead>
           <tr><th scope="col">系列文</th><th scope="col">貼文</th><th scope="col">觀看</th><th scope="col">觀看占比</th><th scope="col">互動率</th><th scope="col">留言</th><th scope="col">私訊送出</th></tr>
         </thead>
@@ -116,8 +117,8 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
 
   <section class="card">
     <h2>各帳號</h2>
-    <div class="table-scroll">
-      <table style="min-width: 640px">
+    <div class="table-scroll fill scroll">
+      <table class="compact">
         <thead>
           <tr><th scope="col">帳號</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動</th><th scope="col">互動率</th></tr>
         </thead>
@@ -134,4 +135,5 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
     </div>
     <div v-if="!summary.rows.length" class="empty">還沒有帳號</div>
   </section>
+  </div>
 </template>

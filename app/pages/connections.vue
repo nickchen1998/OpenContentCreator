@@ -4,6 +4,7 @@ const { projectStyle, accountLabel } = useLookup()
 type Proposal = Post & { suggestions: string[] }
 const proposals = ref<Proposal[]>([])
 const error = ref('')
+const toolsOpen = ref(false)
 const endpoint = `${location.origin}/mcp`
 
 async function load() {
@@ -127,12 +128,13 @@ const TOOLS = [
 </script>
 
 <template>
+  <div class="fit-grid cols-3-2 fill">
   <section class="card">
     <div class="row between">
       <h2>提案佇列</h2>
       <div class="muted">{{ proposals.length }} 則待處理</div>
     </div>
-    <div class="col divided" style="gap: 14px">
+    <div class="col divided fill scroll" style="gap: 14px">
       <div v-for="p in proposals" :key="p.id" class="row between gap-lg">
         <div class="col" style="flex: 1 1 360px; gap: 6px">
           <div class="row">
@@ -158,10 +160,10 @@ const TOOLS = [
     <div v-if="!proposals.length" class="empty">沒有待處理的提案</div>
   </section>
 
-  <div class="grid-2">
-    <section class="card">
+  <div class="fit-col">
+    <section class="card shrink">
       <h2>已連線的專案</h2>
-      <div class="col divided" style="gap: 14px">
+      <div class="col divided scroll" style="gap: 14px">
         <div v-for="p in boot.projects" :key="p.id" class="row between" style="gap: 12px">
           <div class="col grow">
             <div class="row"><span class="tag lg" :style="projectStyle(p.id)">{{ p.name }}</span><code class="muted">{{ p.tokenPrefix }}</code></div>
@@ -184,12 +186,15 @@ const TOOLS = [
         <div class="row between"><span>每個帳號每天最多</span><b>{{ boot.rules.maxPerDay }} 則</b></div>
         <div class="row between"><span>每個帳號每小時自動回覆上限</span><b>{{ boot.rules.replyPerHour }} 則</b></div>
       </div>
-      <button type="button" class="btn" style="align-self: flex-start" @click="openRules">編輯規則</button>
+      <div class="row">
+        <button type="button" class="btn" @click="openRules">編輯規則</button>
+        <button type="button" class="btn" @click="toolsOpen = true">專案可用的工具</button>
+      </div>
     </section>
   </div>
+  </div>
 
-  <section class="card">
-    <h2>專案可用的工具</h2>
+  <AppDialog v-model="toolsOpen" wide title="專案可用的工具" submit-label="">
     <div class="table-scroll">
       <table style="min-width: 640px">
         <thead><tr><th scope="col">工具</th><th scope="col">用途</th><th scope="col">類型</th></tr></thead>
@@ -198,7 +203,7 @@ const TOOLS = [
         </tbody>
       </table>
     </div>
-  </section>
+  </AppDialog>
 
   <AppDialog v-model="timeOpen" title="自選時間並排入" submit-label="排入" :error="error" @submit="saveTime">
     <div class="note">{{ timeFor?.title }}</div>

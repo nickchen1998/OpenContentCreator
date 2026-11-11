@@ -14,8 +14,8 @@ export interface Incoming {
 }
 
 /**
- * 留言回覆的引擎：回覆設定跟著「系列文」走。留言所在的貼文屬於某個啟用中的系列文，才會依那個系列的設定回覆；
- * 不在任何系列裡的貼文完全不處理、也不留紀錄。
+ * 留言回覆的引擎：回覆設定跟著「系列文」走。留言所在的貼文屬於某個系列文才會記錄，並依那個系列的設定回覆
+ * （沒設定回覆或暫停中就只記錄）；不在任何系列裡的貼文完全不處理、也不留紀錄。
  * 防洗版：同一個人在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
  * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
@@ -37,14 +37,17 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
     db.select({ n: sql<number>`count(*)` }).from(comments).where(and(eq(comments.accountId, input.accountId), answered, gte(comments.createdAt, hourAgo))),
   ])
   const series = found[0]?.series
-  // 暫停中的系列文、沒有設定回覆內容的系列文：不回覆，也不記錄
-  if (!series || !series.enabled || !series.replies.length) return
+  // 貼文不在任何系列文裡：不處理，也不記錄
+  if (!series) return
 
   const base = {
     accountId: input.accountId, collectionId: series.id, ruleName: series.name, kind: 'comment', postTitle: found[0]!.postText,
     author: input.author, text: input.text, createdAt: input.at ?? nowIso(),
     externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId,
   }
+  // 沒有設定回覆、或自動回覆暫停中的系列文：留言照樣記下來（留言紀錄看得到），只是不回
+  if (!series.replies.length) return insert({ ...base, status: 'unmatched', reason: '這個系列文沒有設定回覆' })
+  if (!series.enabled) return insert({ ...base, status: 'unmatched', reason: '自動回覆暫停中' })
   const text = input.text.toLowerCase()
   const keyword = series.matchType === 'any' ? '' : keywordsOf(series.keywords).find(k => text.includes(k.toLowerCase()))
   if (series.matchType !== 'any' && !keyword) {
