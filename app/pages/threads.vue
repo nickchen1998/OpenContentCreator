@@ -5,7 +5,6 @@ const { accounts } = useLookup()
 const posts = ref<ThreadPost[]>([])
 const series = ref<{ id: number, name: string }[]>([])
 const loaded = ref(false)
-const syncing = ref(false)
 const filter = ref<'all' | 'pending' | 'loose'>('all')
 const selectedId = ref(0)
 const replies = ref<CommentRow[]>([])
@@ -68,17 +67,6 @@ async function refresh() {
   await load()
 }
 
-async function sync() {
-  syncing.value = true
-  // 成效數字與對話分兩個請求（各自有對外請求的上限）：先同步貼文與數字，再抓最新幾則貼文的整串對話
-  const data = await attempt(() => api<{ errors: string[] }>('/api/insights/sync', { method: 'POST' }))
-  const talk = await attempt(() => api<{ errors: string[] }>('/api/threads/refresh', { method: 'POST' }))
-  syncing.value = false
-  const errors = [...(data?.errors ?? []), ...(talk?.errors ?? [])]
-  if (data || talk) notify(errors.length ? errors.join('；') : '已同步')
-  await load()
-  if (selectedId.value) await pick(selectedId.value)
-}
 </script>
 
 <template>
@@ -88,7 +76,6 @@ async function sync() {
       <button type="button" class="chip" :aria-pressed="filter === 'pending'" @click="filter = 'pending'">有待回覆的對話</button>
       <button type="button" class="chip" :aria-pressed="filter === 'loose'" @click="filter = 'loose'">未歸入系列文</button>
     </div>
-    <button type="button" class="btn" :disabled="syncing || !threadAccounts.length" @click="sync">{{ syncing ? '同步中…' : '立即同步' }}</button>
   </div>
 
   <div class="stats">

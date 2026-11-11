@@ -28,11 +28,9 @@ useAutoRefresh(load)
 
 async function sync() {
   syncing.value = true
-  const data = await attempt(() => api<{ errors: string[] }>('/api/insights/sync', { method: 'POST' }))
+  const ok = await syncAll()
   syncing.value = false
-  if (!data) return
-  notify(data.errors[0] ?? '已更新')
-  await load()
+  if (ok) await load()
 }
 
 const summary = computed(() => summarizeInsights(posts.value, boot.value))

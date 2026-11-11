@@ -71,3 +71,16 @@ export function fmtSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
+
+/**
+ * 「立即同步」：只有儀表板有這顆按鈕（使用者的決定，其他頁不要再放）。分兩個請求（各自有對外請求的上限）：
+ * 先同步各帳號的貼文與成效數字，再抓 Threads 最新幾則貼文的整串對話。回傳 false 表示兩個都失敗
+ */
+export async function syncAll() {
+  const data = await attempt(() => api<{ errors: string[] }>('/api/insights/sync', { method: 'POST' }))
+  const talk = await attempt(() => api<{ errors: string[] }>('/api/threads/refresh', { method: 'POST' }))
+  if (!data && !talk) return false
+  const errors = [...(data?.errors ?? []), ...(talk?.errors ?? [])]
+  notify(errors.length ? errors.join('；') : '已同步')
+  return true
+}
