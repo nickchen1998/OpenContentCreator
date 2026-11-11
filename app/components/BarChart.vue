@@ -14,6 +14,8 @@ const props = defineProps<{
   /** 給螢幕閱讀器的摘要 */
   summary: string
   height?: number
+  /** 填滿外層容器的高度（外層要有明確高度或是 flex 子項） */
+  fill?: boolean
 }>()
 
 const canvas = ref<HTMLCanvasElement>()
@@ -111,7 +113,7 @@ onBeforeUnmount(() => chart?.destroy())
 </script>
 
 <template>
-  <div :style="{ position: 'relative', height: `${height ?? 180}px` }">
+  <div :style="fill ? { position: 'relative', flex: '1 1 0', minHeight: '0' } : { position: 'relative', height: `${height ?? 180}px` }">
     <canvas ref="canvas" role="img" :aria-label="summary" />
   </div>
 </template>

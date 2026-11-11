@@ -48,24 +48,32 @@ const SECTIONS = [
     scopes: ['threads_basic', 'threads_read_replies', 'threads_manage_replies', 'threads_manage_insights'],
   },
 ]
+const route = useRoute()
+const current = ref(['instagram', 'facebook', 'threads', 'youtube'].includes(route.hash.slice(1)) ? route.hash.slice(1) : 'instagram')
 </script>
 
 <template>
-  <section v-for="s in SECTIONS" :id="s.id" :key="s.id" class="card" style="scroll-margin-top: 72px">
-    <h2>{{ s.title }}</h2>
-    <div class="row" style="gap: 8px 20px; align-items: baseline">
-      <span class="small"><span class="muted">可以做　</span>{{ s.can }}</span>
-      <span class="small"><span class="muted">需要　</span>{{ s.need }}</span>
-    </div>
-    <ol style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
-      <li v-for="step in s.steps" :key="step">{{ step }}</li>
-    </ol>
-    <div class="col" style="gap: 6px">
-      <span class="small muted">產生權杖時要勾選的權限</span>
-      <div class="row"><code v-for="scope in s.scopes" :key="scope" class="pl">{{ scope }}</code></div>
-    </div>
-  </section>
-  <section class="card">
+  <div class="row" role="group" aria-label="平台">
+    <button v-for="s in SECTIONS" :key="s.id" type="button" class="chip" :aria-pressed="current === s.id" @click="current = s.id">{{ s.title }}</button>
+    <button type="button" class="chip" :aria-pressed="current === 'youtube'" @click="current = 'youtube'">YouTube</button>
+  </div>
+  <template v-for="s in SECTIONS" :key="s.id">
+    <section v-if="current === s.id" class="card shrink">
+      <h2>{{ s.title }}</h2>
+      <div class="row" style="gap: 8px 20px; align-items: baseline">
+        <span class="small"><span class="muted">可以做　</span>{{ s.can }}</span>
+        <span class="small"><span class="muted">需要　</span>{{ s.need }}</span>
+      </div>
+      <ol class="scroll" style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+        <li v-for="step in s.steps" :key="step">{{ step }}</li>
+      </ol>
+      <div class="col" style="gap: 6px">
+        <span class="small muted">產生權杖時要勾選的權限</span>
+        <div class="row"><code v-for="scope in s.scopes" :key="scope" class="pl">{{ scope }}</code></div>
+      </div>
+    </section>
+  </template>
+  <section v-if="current === 'youtube'" class="card">
     <h2>YouTube</h2>
     <p class="small muted">即將支援</p>
   </section>

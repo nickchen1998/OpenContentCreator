@@ -146,7 +146,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
       <div class="box pre">{{ post.note }}</div>
     </div>
 
-    <div class="grid-2">
+    <div class="fit-grid cols-2 fill">
       <section class="card">
         <div class="row between">
           <h2>素材</h2>
@@ -157,7 +157,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
           </div>
         </div>
         <div v-if="uploading" class="small muted" role="status">{{ uploading }}</div>
-        <div class="col divided" style="gap: 14px">
+        <div class="col divided fill scroll" style="gap: 14px">
           <div v-for="a in assets" :key="a.id" class="row" style="gap: 12px; flex-wrap: nowrap">
             <img v-if="a.contentType.startsWith('image/')" class="thumb" :src="`/api/assets/${a.id}?inline=1`" alt="" loading="lazy">
             <div v-else class="thumb" aria-hidden="true">{{ kind(a) }}</div>
@@ -177,7 +177,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
 
       <section class="card">
         <h2>文案</h2>
-        <div class="col divided" style="gap: 14px">
+        <div class="col divided fill scroll" style="gap: 14px">
           <div v-for="t in post.targets" :key="t.id" class="col" style="gap: 10px">
             <div class="row between">
               <h3>{{ platformLabel(t.accountId) }} 版<span class="small muted" style="font-weight: 400">　{{ account(t.accountId)?.name }}</span></h3>
@@ -186,15 +186,15 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
                 <button type="button" class="btn outline" @click="copyCaption(t)">{{ copied === t.id ? '已複製' : '複製文字' }}</button>
               </div>
             </div>
-            <textarea v-model="captions[t.id]" rows="6" maxlength="10000" :aria-label="`${platformLabel(t.accountId)} 文案`" placeholder="這個平台的文案" />
+            <textarea v-model="captions[t.id]" rows="4" maxlength="10000" :aria-label="`${platformLabel(t.accountId)} 文案`" placeholder="這個平台的文案" />
           </div>
         </div>
       </section>
     </div>
 
-    <section class="card" style="gap: 16px">
+    <section class="card status-card" style="gap: 12px">
       <h2>發文狀態</h2>
-      <div class="col divided" style="gap: 16px">
+      <div class="col divided scroll" style="gap: 12px">
         <div v-for="t in post.targets" :key="t.id" class="row between gap-lg">
           <div class="col" style="flex: 1 1 200px">
             <div class="bold">{{ platformLabel(t.accountId) }}</div>

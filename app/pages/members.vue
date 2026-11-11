@@ -70,10 +70,10 @@ const isMe = (m: Member) => m.id === (user.value as { id?: number } | null)?.id
     </form>
   </section>
 
-  <section class="card">
+  <section class="card shrink">
     <p class="en-label">All members</p>
     <h2 style="margin-top: -6px">會員清單</h2>
-    <div class="table-scroll">
+    <div class="table-scroll scroll">
       <table style="min-width: 520px">
         <thead><tr><th scope="col">帳號</th><th scope="col">角色</th><th scope="col">建立時間</th><th scope="col">操作</th></tr></thead>
         <tbody>

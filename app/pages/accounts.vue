@@ -50,12 +50,12 @@ async function removeAccount() {
 </script>
 
 <template>
-  <section class="card">
+  <section class="card shrink">
     <div class="row between">
       <h2>帳號</h2>
       <button type="button" class="btn primary" @click="openAccount()">新增帳號</button>
     </div>
-    <div class="col divided" style="gap: 12px">
+    <div class="col divided scroll" style="gap: 12px">
       <div v-for="a in accounts" :key="a.id" class="row between" style="gap: 12px">
         <div class="col">
           <span class="bold">{{ PLATFORMS[a.platform].label }}</span>

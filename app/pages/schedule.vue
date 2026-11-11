@@ -62,7 +62,7 @@ function saved() {
     </div>
   </div>
 
-  <div class="week-scroll">
+  <div class="week-scroll fill">
     <div class="week">
       <section v-for="d in days" :key="d.day" class="day" :class="{ today: d.day === today }" :aria-label="`${d.label} ${d.date}`">
         <div class="row between" style="align-items: baseline">
