@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 串文管理：Threads 發得多，大部分不屬於任何系列文。左邊看每則貼文的成效，右邊看回覆、手動回一句。貼文歸在哪個系列文只顯示，要改到系列文管理去改
+// 串文管理：Threads 發得多，大部分不屬於任何系列文。左邊看每則貼文的成效，右邊看回覆、手動回一句。貼文歸在哪個系列文只在左邊的清單顯示，要改到系列文管理去改
 type ThreadPost = InsightPost & { seriesId: number | null, received: number, pending: number, parts: number }
 const { accounts } = useLookup()
 const posts = ref<ThreadPost[]>([])
@@ -45,17 +45,25 @@ async function load() {
   loaded.value = true
 }
 const fetching = ref(false)
-const waitingOnly = ref(false)
+type Fresh = { rows: CommentRow[], warning: string, metrics: Pick<ThreadPost, 'views' | 'likes' | 'comments' | 'shares'> | null }
+/** 向 Threads 抓這一則最新的整串對話；metrics 為 true 時連成效數字一起（這則貼文的「立即同步」） */
+async function fetchLatest(id: number, metrics: boolean) {
+  fetching.value = true
+  const fresh = await attempt(() => api<Fresh>(`/api/threads/${id}/refresh`, { method: 'POST', body: { metrics } }))
+  fetching.value = false
+  if (!fresh) return
+  const post = posts.value.find(p => p.id === id)
+  if (post && fresh.metrics) Object.assign(post, fresh.metrics)
+  if (selectedId.value === id) replies.value = fresh.rows
+  if (fresh.warning) notify(fresh.warning)
+  else if (metrics) notify('已同步')
+  if (metrics) await load()
+}
 async function pick(id: number) {
   selectedId.value = id
-  // 先顯示已經記下的，再向 Threads 抓這一則最新的整串對話
+  // 先顯示已經記下的，再去抓最新的
   replies.value = await attempt(() => api<CommentRow[]>(`/api/threads/${id}`)) ?? []
-  fetching.value = true
-  const fresh = await attempt(() => api<{ rows: CommentRow[], warning: string }>(`/api/threads/${id}/refresh`, { method: 'POST' }))
-  fetching.value = false
-  if (!fresh || selectedId.value !== id) return
-  replies.value = fresh.rows
-  if (fresh.warning) notify(fresh.warning)
+  await fetchLatest(id, false)
 }
 onMounted(load)
 // 有新的回覆或狀態變動時自動更新（只讀已經記下的，不會每次都去打 Threads）
@@ -121,7 +129,10 @@ async function refresh() {
 
     <section v-if="selected" class="card" aria-label="這則貼文的回覆">
       <div class="col shrink" style="gap: 6px">
-        <p class="bold wrap-any thread-full">{{ selected.text || '（沒有文字的貼文）' }}</p>
+        <div class="row between" style="gap: 12px; flex-wrap: nowrap; align-items: flex-start">
+          <p class="bold wrap-any thread-full">{{ selected.text || '（沒有文字的貼文）' }}</p>
+          <button type="button" class="btn sm" style="flex: none" :disabled="fetching" @click="fetchLatest(selected.id, true)">{{ fetching ? '同步中…' : '立即同步' }}</button>
+        </div>
         <div class="row small muted" style="gap: 2px 16px">
           <span>{{ dayOf(selected.publishedAt) }}</span>
           <span>觀看 {{ fmtNum(selected.views) }}</span>
@@ -129,19 +140,10 @@ async function refresh() {
           <span>回覆 {{ fmtNum(selected.comments) }}</span>
           <span>轉發 {{ fmtNum(selected.shares) }}</span>
           <a v-if="selected.url" :href="selected.url" target="_blank" rel="noopener noreferrer">在 Threads 開啟</a>
-          <span v-if="fetching" aria-live="polite">更新中…</span>
         </div>
       </div>
-      <div class="row between">
-        <span class="small">
-          <span class="muted">系列文　</span>
-          <NuxtLink v-if="selected.seriesId" :to="`/series/${selected.seriesId}`" class="bold">{{ seriesName(selected.seriesId) }}</NuxtLink>
-          <span v-else class="muted">未歸入</span>
-        </span>
-        <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
-      </div>
 
-      <ConversationList :rows="replies" show-parts :waiting-only="waitingOnly" @changed="refresh" />
+      <ConversationList :rows="replies" show-parts @changed="refresh" />
     </section>
   </div>
 </template>

@@ -61,7 +61,7 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
  * 跑一樣的規則，但**不自動送出**：命中的會是「待送出」，由會員自己決定要不要回（否則把一篇有上百則留言的貼文
  * 加進系列文，會一口氣對所有人回覆加私訊）。每次最多看 4 則貼文、收 12 則新留言，其餘下次同步再收。
  */
-async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number) {
+export async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number) {
   const db = useDb()
   try {
     const [targets, seenRows] = await db.batch([
@@ -240,4 +240,56 @@ export async function importThreadConversations(connection: Connection, ownerId:
     await batchWrites(writes)
   }
   return warning
+}
+
+/**
+ * 系列文成效頁的「立即同步」：只同步這個系列文裡的貼文，不管貼文多舊（排程只顧最近的貼文，舊的由會員手動補）。
+ * 每則貼文抓一次成效數字（1–3 個請求），Threads 的再抓整串對話，Instagram／Facebook 的補抓既有留言。
+ * Free 方案一個請求最多 50 個對外請求，所以一次最多 8 則（最久沒更新的優先），貼文更多就再按一次。
+ */
+export async function syncSeries(uid: number, seriesId: number) {
+  const db = useDb()
+  const rows = await db.select({ post: accountPosts, platform: accounts.platform, connection: connections }).from(collectionPosts)
+    .innerJoin(accountPosts, eq(accountPosts.id, collectionPosts.postId))
+    .innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
+    .leftJoin(connections, eq(connections.accountId, accounts.id))
+    .where(and(eq(collectionPosts.collectionId, seriesId), eq(accounts.ownerId, uid)))
+    .orderBy(sql`${accountPosts.insightsAt} is not null`, asc(accountPosts.insightsAt))
+  const usable = rows.filter(r => r.connection && isMetaPlatform(r.platform))
+  const batch = usable.slice(0, 8)
+  const errors = new Set<string>()
+  const now = nowIso()
+  const writes = []
+  const tokens = new Map<number, string>()
+  const tokenOf = async (c: Connection) => tokens.get(c.id) ?? tokens.set(c.id, await unseal(c.tokenEnc)).get(c.id)!
+  let synced = 0
+  for (const { post, platform, connection } of batch) {
+    try {
+      const m = await fetchMetrics(platform as MetaPlatform, await tokenOf(connection!), post.externalId)
+      // 觀看數讀不到時（貼文類型不支援、權限不足）只更新按讚與留言，不要把原本的觀看、分享、收藏蓋成 0
+      const set = m.views > 0 ? m : { likes: m.likes, comments: m.comments }
+      writes.push(db.update(accountPosts).set({ ...set, insightsAt: now }).where(eq(accountPosts.id, post.id)))
+      synced++
+    }
+    catch (e) {
+      errors.add(`${connection!.externalName}：讀不到成效數字：${(e as Error).message}`)
+    }
+  }
+  await batchWrites(writes)
+  // 留言：同一個帳號的貼文一起處理
+  const byConnection = new Map<number, typeof batch>()
+  for (const r of batch) byConnection.set(r.connection!.id, [...(byConnection.get(r.connection!.id) ?? []), r])
+  for (const group of byConnection.values()) {
+    const { connection, platform } = group[0]!
+    try {
+      const warning = platform === 'threads'
+        ? await importThreadConversations(connection!, uid, group.map(r => ({ id: r.post.externalId, text: r.post.text, inSeries: seriesId })), 4)
+        : await importSeriesComments(platform as 'instagram' | 'facebook', connection!, await tokenOf(connection!), uid)
+      if (warning) errors.add(`${connection!.externalName}：${warning}`)
+    }
+    catch (e) {
+      errors.add(`${connection!.externalName}：讀不到留言：${(e as Error).message}`)
+    }
+  }
+  return { synced, total: usable.length, unlinked: rows.length - usable.length, errors: [...errors].map(e => e.slice(0, 300)) }
 }
