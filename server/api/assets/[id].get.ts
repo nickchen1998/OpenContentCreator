@@ -1,10 +1,6 @@
-import { eq } from 'drizzle-orm'
-import { assets } from '../../database/schema'
-
 // 下載素材。?inline=1 給縮圖與預覽用；預設是附件下載
 export default defineEventHandler(async (event) => {
-  const [asset] = await useDb().select().from(assets).where(eq(assets.id, idParam(event)))
-  if (!asset) throw notFound('素材')
+  const asset = await ownedAsset(uidOf(event), idParam(event))
   const object = await useMedia().get(asset.r2Key)
   if (!object) throw notFound('素材')
   // 使用者上傳的內容一律不讓瀏覽器當成網頁執行：只有圖片、影片、音訊可以 inline

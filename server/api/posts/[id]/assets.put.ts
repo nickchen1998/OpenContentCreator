@@ -1,5 +1,4 @@
-import { eq } from 'drizzle-orm'
-import { assets, posts } from '../../../database/schema'
+import { assets } from '../../../database/schema'
 
 // Nitro 的 Cloudflare preset 會先把整個 request body 讀進記憶體（Worker 記憶體上限 128MB），所以上限抓 60MB
 const MAX_BYTES = 60 * 1024 * 1024
@@ -13,8 +12,7 @@ export default defineEventHandler(async (event) => {
   if (!Number.isInteger(size) || size <= 0) throw bad('沒有檔案內容')
   if (size > MAX_BYTES) throw bad('單一檔案最大 60MB', 413)
   const db = useDb()
-  const [post] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId))
-  if (!post) throw notFound('貼文')
+  await ownedPost(uidOf(event), postId)
   const contentType = getHeader(event, 'content-type') || 'application/octet-stream'
   const r2Key = `assets/${postId}/${crypto.randomUUID()}`
   const body = await readRawBody(event, false)

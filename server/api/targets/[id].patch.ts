@@ -5,6 +5,7 @@ import { postTargets } from '../../database/schema'
 export default defineEventHandler(async (event) => {
   const id = idParam(event)
   const body = await bodyOf(event)
+  await ownedTarget(uidOf(event), id)
   const set: Partial<typeof postTargets.$inferInsert> = {}
   if (body.caption !== undefined) set.caption = str(body.caption, '文案', 10000, false)
   if (body.publishedUrl !== undefined) {

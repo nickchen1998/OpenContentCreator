@@ -1,4 +1,4 @@
-import { settings } from '../database/schema'
+import { userSettings } from '../database/schema'
 
 export default defineEventHandler(async (event) => {
   const body = await bodyOf(event)
@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
     replyPerHour: int(body.replyPerHour, '每小時回覆上限', 0, 1000),
   }
   const db = useDb()
+  const userId = uidOf(event)
   await batchWrites(Object.entries(values).map(([key, v]) =>
-    db.insert(settings).values({ key, value: String(v) }).onConflictDoUpdate({ target: settings.key, set: { value: String(v) } })))
+    db.insert(userSettings).values({ userId, key, value: String(v) }).onConflictDoUpdate({ target: [userSettings.userId, userSettings.key], set: { value: String(v) } })))
   return values
 })

@@ -10,10 +10,29 @@
   本機副本在被 gitignore 的 `.env.production`。
 - `nuxt.config.ts` 的 runtimeConfig 不要寫 `process.env.X`，那會在建置時把值寫進 bundle。
 
+## 會員與資料隔離（最重要）
+
+- 每個會員的資料互相獨立。擁有者只記在 `groups.owner_id` 與 `projects.owner_id`，其他表都經由群組歸屬到會員。
+- **新的端點一定要限定在登入的會員身上**：`uidOf(event)` 取會員 id；群組／帳號／專案的 id 要在 `loadBoot(uid)`
+  裡才算數；以 id 存取其他資料用 `server/utils/owned.ts` 的 `ownedPost` / `ownedAsset` / `ownedTarget` /
+  `ownedRule` / `ownedComment` / `ownedAccount`。別人的資料一律回 404。
+- `owner_id` 的外鍵沒有 cascade（SQLite 的 ALTER 加不上去），刪會員要走 `deleteUserData`。
+- 管理員功能用 `requireAdmin(event)`。沒有開放註冊，也不做 OAuth（使用者的決定）。
+- 改了這一帶之後，用兩個本機帳號互打一次 API 確認擋得住。
+
+## 介面
+
+- 設計語言比照 TuSoul（`../TuSoul/web/app/assets/css/`）：米白底淡格線、白卡片大圓角、深綠漸層側欄、
+  膠囊按鈕、英文小標（`.en-label`）。token 與共用 class 都在 `app/assets/css/main.css`，不用 UI 框架。
+- 字級：內文 15、頁標題 24/800、區塊標題 17/700、輔助文字 13、英文小標 11、按鈕 14／13、表格 13.5。
+- 每頁開頭是 `<p class="en-label">English · 中文</p>` 加 `<h1>`。不要用藍色當主色或 logo 底色。
+
 ## 寫程式時要知道的
 
 - 新的 server route 要放在 `/api/*` 或 `/mcp` 底下，否則會被靜態資產接走。頁面路徑不能叫 `/mcp`。
-- `/api/*` 由 `server/middleware/auth.ts` 統一要求登入（`/api/auth/*` 除外）；`/mcp` 自己驗專案 token。
+- `/api/*` 由 `server/middleware/auth.ts` 統一要求登入（`/api/auth/login` 除外），每個請求重新查一次會員；`/mcp` 自己驗專案 token。
+- 密碼雜湊是 PBKDF2 20,000 次（Free 方案的 CPU 上限），`server/utils/passwords.ts` 與 `scripts/set-user.mjs` 要用同一種格式。
+- drizzle-kit 在非互動環境遇到「是改名還是新增」會直接失敗：一次 migration 不要同時刪表又加表。
 - Workers Free 方案每個請求 10ms CPU、50 次 D1 查詢：多筆寫入用 `db.batch()`（`batchWrites`），
   共用資料用 `loadBoot()` 一趟讀完。
 - 撞期判斷集中在 `server/utils/coordination.ts`，網頁與 MCP 共用；衝突是讀取時算的，不存進資料庫。

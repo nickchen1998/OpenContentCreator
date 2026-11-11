@@ -16,9 +16,9 @@ export default defineEventHandler(async (event) => {
   }
   const token = getHeader(event, 'authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1]
   const [row] = token
-    ? await useDb().select({ id: projects.id }).from(projects).where(eq(projects.tokenHash, await sha256(token)))
+    ? await useDb().select({ id: projects.id, ownerId: projects.ownerId }).from(projects).where(eq(projects.tokenHash, await sha256(token)))
     : []
-  if (!row) {
+  if (!row || row.ownerId == null) {
     setResponseHeader(event, 'WWW-Authenticate', 'Bearer realm="mcp"')
     throw createError({ statusCode: 401, message: '需要專案的 MCP token' })
   }
@@ -29,7 +29,8 @@ export default defineEventHandler(async (event) => {
   let ctx: McpContext | undefined
   const context = async () => {
     if (!ctx) {
-      const boot = await loadBoot()
+      // 專案屬於哪個會員，就只看得到那個會員的資料
+      const boot = await loadBoot(row.ownerId!)
       ctx = { boot, project: boot.projects.find(p => p.id === row.id)! }
     }
     return ctx

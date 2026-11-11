@@ -1,11 +1,13 @@
 import type { SQL } from 'drizzle-orm'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { posts, postTargets } from '../database/schema'
 
-/** 讀出貼文與各平台的目標，並算好每一則是否違反協調規則。 */
+/** 讀出貼文與各平台的目標，並算好每一則是否違反協調規則。只會讀到 boot 那位會員的群組底下的貼文。 */
 export async function loadPosts(boot: Boot, where: SQL | undefined): Promise<Post[]> {
   const db = useDb()
-  const rows = await db.select().from(posts).where(where).orderBy(asc(posts.scheduledAt), asc(posts.id))
+  const groupIds = boot.groups.map(g => g.id)
+  if (!groupIds.length) return []
+  const rows = await db.select().from(posts).where(and(inIdList(posts.groupId, groupIds), where)).orderBy(asc(posts.scheduledAt), asc(posts.id))
   if (!rows.length) return []
   const ids = rows.map(r => r.id)
   const days = rows.map(r => r.scheduledAt.slice(0, 10)).sort()

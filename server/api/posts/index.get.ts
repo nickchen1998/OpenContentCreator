@@ -4,7 +4,7 @@ import { posts } from '../../database/schema'
 // ?from=YYYY-MM-DD&to=YYYY-MM-DD（含頭尾），或 ?status=pending 列出提案佇列（附建議的替代時段）
 export default defineEventHandler(async (event) => {
   const { from, to, status } = getQuery(event)
-  const boot = await loadBoot()
+  const boot = await loadBoot(uidOf(event))
   if (status === 'pending') {
     const pending = await loadPosts(boot, eq(posts.status, 'pending'))
     if (!pending.length) return []

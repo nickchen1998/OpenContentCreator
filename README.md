@@ -15,6 +15,7 @@
 | 留言回覆 `/replies` | 固定回覆規則（關鍵字／任何留言、多句輪替、防洗版）與留言紀錄 |
 | MCP 連線 `/connections` | 提案佇列、專案與 token、協調規則 |
 | 帳號群組 `/groups` | 群組與底下各平台的帳號 |
+| 會員管理 `/members` | 管理員建立會員、重設密碼、刪除會員 |
 
 ### MCP
 
@@ -26,12 +27,23 @@ claude mcp add --transport http opencontentcreator https://opencontentcreator.co
 
 工具：`list_groups`、`list_schedule`、`find_open_slots`、`check_conflicts`、`get_insights`、`propose_post`、`update_proposal`。
 
+### 會員
+
+帳號加密碼登入，沒有開放註冊、也沒有 OAuth。每個會員有自己的群組、貼文、素材、專案與規則，
+彼此看不到對方的資料；MCP token 屬於哪個會員，就只看得到那個會員的資料。
+
+- 平常由管理員在「會員管理」頁建立帳號，密碼由系統產生、只顯示一次；會員登入後可以自己改密碼。
+- 第一個管理員（或管理員忘記密碼）用指令：
+
+  ```bash
+  OCC_USER_PASSWORD='<密碼>' node scripts/set-user.mjs <帳號> --admin --remote
+  ```
+
 ### 還沒做的
 
 - **各平台 API 尚未串接**（Meta / YouTube 需要各自的開發者應用程式與審核）。所以：
   成效數字是手動登錄；留言是手動貼入，系統依規則挑好固定回覆，由你貼出去再標示已回覆。
   規則引擎在 `server/utils/replies.ts`，接上平台後直接呼叫 `processComment`。
-- 單一使用者（密碼登入），沒有會員制。
 - 素材單檔上限 60MB。
 
 ## 架構
@@ -52,7 +64,8 @@ claude mcp add --transport http opencontentcreator https://opencontentcreator.co
 pnpm install
 pnpm db:migrate:local
 pnpm build
-pnpm preview:worker --var NUXT_SESSION_PASSWORD:<32 字元以上> --var NUXT_ADMIN_PASSWORD:<本機密碼>
+OCC_USER_PASSWORD='<本機密碼>' node scripts/set-user.mjs <帳號> --admin
+pnpm preview:worker --var NUXT_SESSION_PASSWORD:<32 字元以上>
 ```
 
 在 workerd 上跑建置後的 Worker（http://localhost:3010），跟正式環境行為一致。
@@ -69,4 +82,3 @@ pnpm build && pnpm exec wrangler deploy
 Secret 用 `wrangler secret put` 設定，不放進任何會 commit 的檔案：
 
 - `NUXT_SESSION_PASSWORD`：session cookie 的加密密鑰
-- `NUXT_ADMIN_PASSWORD`：登入密碼

@@ -89,13 +89,14 @@ const hit = (c: CommentRow) => c.ruleId != null || c.ruleName !== ''
 <template>
   <div class="row between gap-lg">
     <div class="col" style="flex: 1 1 420px">
+      <p class="en-label">Replies · 留言與固定回覆</p>
       <h1>留言與自動回覆</h1>
       <div class="lead">只有命中規則的留言會得到固定回覆，內容都是你事先寫好的句子。沒命中的留言不處理，留給你自己回。</div>
     </div>
     <button type="button" class="btn primary" :disabled="!boot.groups.length" @click="openRule()">新增規則</button>
   </div>
 
-  <div class="card" style="background: var(--primary-soft)">
+  <div class="card warn">
     <div class="note"><b>目前還沒有接上各平台的 API</b>，系統不會自己抓留言、也不會自己送出回覆。現在的用法：把留言貼進來，系統依規則挑好要回的那一句，你複製貼到平台上，再標示為已回覆。規則、輪替與防洗版的判斷都已經是正式邏輯，接上平台後會直接沿用。</div>
   </div>
 
@@ -150,7 +151,7 @@ const hit = (c: CommentRow) => c.ruleId != null || c.ruleName !== ''
         <div class="small muted">{{ accountLabel(sel.accountId) }}<template v-if="sel.postTitle"> · 貼文「{{ sel.postTitle }}」</template></div>
         <div class="bold">{{ sel.author }}</div>
       </div>
-      <div class="box wrap-any" style="font-size: 17px; line-height: 1.6; padding: 14px 16px">{{ sel.text }}</div>
+      <div class="box wrap-any" style="font-size: 15px; line-height: 1.7; padding: 14px 16px">{{ sel.text }}</div>
       <div class="col" style="gap: 6px">
         <div class="small muted">規則與處理</div>
         <div style="line-height: 1.6">{{ sel.reason }}</div>

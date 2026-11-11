@@ -10,6 +10,8 @@ export const isPlatform = (v: unknown): v is Platform => typeof v === 'string' &
 
 // 專案標籤的顏色（底色／文字，對比都在 4.5:1 以上）
 export const PROJECT_COLORS = {
+  green: { bg: '#E8EEE6', fg: '#3E5346', label: '綠' },
+  olive: { bg: '#F3ECDC', fg: '#6B5A1E', label: '橄欖' },
   blue: { bg: '#E6EDFA', fg: '#1F4FA3', label: '藍' },
   orange: { bg: '#FCEBD3', fg: '#7A4300', label: '橘' },
   teal: { bg: '#DDF1EE', fg: '#0F5C55', label: '青' },

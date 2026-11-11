@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { posts, replyRules } from '../database/schema'
 
-export async function ruleValues(body: Record<string, unknown>) {
-  const boot = await loadBoot()
+export async function ruleValues(uid: number, body: Record<string, unknown>) {
+  const boot = await loadBoot(uid)
   const groupId = int(body.groupId, '群組', 1)
   const group = boot.groups.find(g => g.id === groupId)
   if (!group) throw bad('找不到這個群組')

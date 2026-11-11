@@ -47,7 +47,7 @@ function openProject(p?: Project) {
   editing.value = p
   error.value = ''
   pform.name = p?.name ?? ''
-  pform.color = p?.color ?? (Object.keys(PROJECT_COLORS) as ProjectColor[])[boot.value.projects.length % 6]!
+  pform.color = p?.color ?? (Object.keys(PROJECT_COLORS) as ProjectColor[])[boot.value.projects.length % Object.keys(PROJECT_COLORS).length]!
   pform.grants = Object.fromEntries(boot.value.groups.map((g) => {
     const grant = p?.grants.find(x => x.groupId === g.id)
     return [g.id, { on: !!grant, priority: grant?.priority ?? 1, canReadInsights: grant?.canReadInsights ?? true }]
@@ -130,6 +130,7 @@ const TOOLS = [
 
 <template>
   <div class="col">
+    <p class="en-label">Connections · MCP 連線</p>
     <h1>MCP 連線與排程協調</h1>
     <div class="lead">每個專案的 Claude 用自己的 token 連進來，只看得到被授權的帳號群組，也只能送提案；是否排入由你決定。</div>
   </div>
@@ -146,7 +147,7 @@ const TOOLS = [
             <span class="tag lg" :style="projectStyle(p.projectId)">{{ boot.projects.find(x => x.id === p.projectId)?.name ?? '已刪除的專案' }}</span>
             <span class="small bold" :style="p.conflicts.length ? 'color: var(--danger)' : 'color: var(--ok)'">{{ p.conflicts.length ? '時段衝突' : '符合規則' }}</span>
           </div>
-          <NuxtLink :to="`/posts/${p.id}`" class="bold" style="font-size: 16px; color: var(--text)">{{ p.title }}</NuxtLink>
+          <NuxtLink :to="`/posts/${p.id}`" class="bold" style="font-size: 15px; color: var(--ink)">{{ p.title }}</NuxtLink>
           <div class="small" style="color: var(--text-2)">{{ group(p.groupId)?.name }} · {{ p.targets.map(t => accountLabel(t.accountId).split(' · ')[1]).join('、') }} · {{ fmtAt(p.scheduledAt) }}</div>
           <div v-for="c in p.conflicts" :key="c" class="note">{{ c }}</div>
           <div v-if="p.note" class="note muted">備註：{{ p.note }}</div>

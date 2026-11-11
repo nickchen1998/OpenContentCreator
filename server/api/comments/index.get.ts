@@ -1,1 +1,1 @@
-export default defineEventHandler(() => listComments())
+export default defineEventHandler(event => listComments(uidOf(event)))
