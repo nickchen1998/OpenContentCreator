@@ -28,10 +28,16 @@ export default defineEventHandler(async (event) => {
 
   // 先驗完簽章再處理：找不到連結或簽章不對的 entry 直接丟掉
   const verified = []
+  const rejected: string[] = []
   for (const entry of payload.entry.slice(0, 20)) {
-    const connection = await findConnection(owner.uid, platform, String(entry?.id ?? ''))
-    if (connection && await verifyHubSignature(raw, signature, await unseal(connection.appSecretEnc))) verified.push({ entry, connection })
+    const entryId = String(entry?.id ?? '')
+    const connection = await findConnection(owner.uid, platform, entryId)
+    if (!connection) rejected.push(`${entryId}: 沒有對應的連結`)
+    else if (!(await verifyHubSignature(raw, signature, await unseal(connection.appSecretEnc)))) rejected.push(`${entryId}: 簽章不符`)
+    else verified.push({ entry, connection })
   }
+  // 被擋掉的原因記到 log（不含內容與密鑰），接帳號時才查得出是 id 對不上還是 app secret 不對
+  if (rejected.length) console.warn('meta hook rejected', JSON.stringify({ platform, rejected, hasSignature: Boolean(signature), fields: payload.entry.map((e: any) => [...(e?.changes ?? []).map((c: any) => c?.field), ...(e?.messaging ? ['messaging'] : [])]) }))
   if (!verified.length) throw createError({ statusCode: 403, message: 'Forbidden' })
 
   // Meta 要求幾秒內回 200，否則會重送；實際處理（跑規則、呼叫 Graph API）放到回應之後

@@ -27,7 +27,7 @@ async function save() {
     }
     else {
       open.value = false
-      notify(`已連結 ${result.externalName}`)
+      notify(props.connection ? '已更新' : `已連結 ${result.externalName}`)
     }
   }
   catch (e: any) {
@@ -62,9 +62,9 @@ async function copy(text: string) {
       <div v-if="warning" class="error" role="alert">{{ warning }}</div>
 
       <label class="field">Access token
-        <textarea v-model="form.token" rows="3" autocomplete="off" spellcheck="false" required style="font-family: ui-monospace, Menlo, monospace; font-size: 13px" />
+        <textarea v-model="form.token" rows="3" autocomplete="off" spellcheck="false" :required="!connection" :placeholder="connection ? '留空 = 不更換' : ''" style="font-family: ui-monospace, Menlo, monospace; font-size: 13px" />
       </label>
-      <label v-if="needsWebhook" class="field">App secret
+      <label v-if="needsWebhook" class="field">{{ account.platform === 'instagram' ? 'Instagram 應用程式密鑰' : '應用程式密鑰（App secret）' }}
         <input v-model="form.appSecret" type="password" autocomplete="off" required>
       </label>
 
