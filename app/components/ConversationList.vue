@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // 對話：留言紀錄整理成一張張卡片（一個人在一則貼文底下的往來算一張），點卡片在同一個區塊裡展開成整串對話。
 // 串文管理與系列文成效頁共用。資料有變動時發出 changed，由外面重新讀取 rows。
-const props = defineProps<{ rows: CommentRow[], showPlatform?: boolean, showParts?: boolean }>()
+// waitingOnly：只看待回覆的對話（開關放在外面，跟頁面上其他控制項排在一起，不另外占一列）
+const props = defineProps<{ rows: CommentRow[], showPlatform?: boolean, showParts?: boolean, waitingOnly?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const { account } = useLookup()
 
 const grouped = computed(() => groupConversations(props.rows.map(r => ({ ...r }))))
 // 子文串只在看單一則 Threads 貼文時有意義
 const parts = computed(() => (props.showParts ? [...grouped.value.parts.values()][0] ?? [] : []))
-const filter = ref<'all' | 'waiting'>('all')
 const part = ref(-1) // -1 全部、0 主文、1 以上是第幾則子文
 const openKey = ref('')
 const draft = ref('')
@@ -16,7 +16,7 @@ const busy = ref(false)
 
 const countIn = (index: number) => grouped.value.conversations.filter(c => c.part === index).length
 const filtered = computed(() => grouped.value.conversations.filter(c =>
-  (part.value < 0 || c.part === part.value) && (filter.value === 'all' || c.waiting)))
+  (part.value < 0 || c.part === part.value) && (!props.waitingOnly || c.waiting)))
 const PAGE_SIZE = 8
 const page = ref(1)
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
@@ -26,7 +26,7 @@ function goPage(n: number) {
   page.value = Math.min(Math.max(1, n), pages.value)
   listEl.value?.scrollTo({ top: 0 })
 }
-watch([filter, part], () => goPage(1))
+watch([() => props.waitingOnly, part], () => goPage(1))
 // 換了一則貼文（rows 整批換掉）就回到卡片清單
 watch(() => props.rows[0]?.externalPostId, () => {
   if (props.showParts) {
@@ -89,14 +89,11 @@ async function dismiss() {
 
 <template>
   <div v-if="!current" class="conv">
-    <div class="row between">
-      <div v-if="parts.length" class="row" role="group" aria-label="主文與子文串">
+    <div v-if="parts.length" class="row">
+      <div class="row" role="group" aria-label="主文與子文串">
         <button type="button" class="chip" :aria-pressed="part === -1" @click="part = -1">全部</button>
         <button type="button" class="chip" :aria-pressed="part === 0" @click="part = 0">主文 · {{ countIn(0) }}</button>
         <button v-for="(p, i) in parts" :key="p.id" type="button" class="chip" :aria-pressed="part === i + 1" @click="part = i + 1">{{ whereOf(i + 1) }} · {{ countIn(i + 1) }}</button>
-      </div>
-      <div class="row" style="margin-left: auto">
-        <button type="button" class="chip" :aria-pressed="filter === 'waiting'" @click="filter = filter === 'waiting' ? 'all' : 'waiting'">只看待回覆</button>
       </div>
     </div>
     <p v-if="part > 0" class="conv-context wrap-any">{{ parts[part - 1]?.text }}</p>

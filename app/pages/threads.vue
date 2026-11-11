@@ -45,15 +45,24 @@ async function load() {
   }
   loaded.value = true
 }
+const fetching = ref(false)
+const waitingOnly = ref(false)
 async function pick(id: number) {
   selectedId.value = id
+  // 先顯示已經記下的，再向 Threads 抓這一則最新的整串對話
   replies.value = await attempt(() => api<CommentRow[]>(`/api/threads/${id}`)) ?? []
+  fetching.value = true
+  const fresh = await attempt(() => api<{ rows: CommentRow[], warning: string }>(`/api/threads/${id}/refresh`, { method: 'POST' }))
+  fetching.value = false
+  if (!fresh || selectedId.value !== id) return
+  replies.value = fresh.rows
+  if (fresh.warning) notify(fresh.warning)
 }
 onMounted(load)
 
 /** 右邊的對話有變動（回覆、不用回）：重新讀這則的對話，左邊的待回覆數字也跟著更新 */
 async function refresh() {
-  if (selectedId.value) await pick(selectedId.value)
+  if (selectedId.value) replies.value = await attempt(() => api<CommentRow[]>(`/api/threads/${selectedId.value}`)) ?? replies.value
   await load()
 }
 
@@ -134,17 +143,19 @@ async function setSeries(value: string) {
           <span>回覆 {{ fmtNum(selected.comments) }}</span>
           <span>轉發 {{ fmtNum(selected.shares) }}</span>
           <a v-if="selected.url" :href="selected.url" target="_blank" rel="noopener noreferrer">在 Threads 開啟</a>
+          <span v-if="fetching" aria-live="polite">更新中…</span>
         </div>
       </div>
-      <label class="thread-series">
-        <span class="small bold">系列文</span>
-        <select :value="selected.seriesId ?? ''" @change="setSeries(($event.target as HTMLSelectElement).value)">
+      <div class="thread-series">
+        <label for="thread-series-pick" class="small bold">系列文</label>
+        <select id="thread-series-pick" :value="selected.seriesId ?? ''" @change="setSeries(($event.target as HTMLSelectElement).value)">
           <option value="">不加入</option>
           <option v-for="s in series" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
-      </label>
+      <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
+      </div>
 
-      <ConversationList :rows="replies" show-parts @changed="refresh" />
+      <ConversationList :rows="replies" show-parts :waiting-only="waitingOnly" @changed="refresh" />
     </section>
   </div>
 </template>
