@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
 
   let identity
   try {
-    identity = await identify(account.platform, token)
+    identity = await identify(account.platform, token, account.name)
   }
   catch (e) {
     throw bad(`Token 無法使用：${(e as Error).message}`)
@@ -29,8 +29,8 @@ export default defineEventHandler(async (event) => {
   const values = {
     accountId, ...identity,
     tokenEnc: await seal(token), appSecretEnc: await seal(appSecret),
-    // Instagram 與 Threads 的長效 token 60 天到期（每天的排程會自動換新）；粉專的 Page token 不會到期
-    tokenExpiresAt: account.platform !== 'facebook' ? new Date(Date.now() + 60 * 86400_000).toISOString() : null,
+    // 「Instagram 登入」與 Threads 的長效 token 60 天到期（排程會自動換新）；粉專與統一登入的 token 不在這裡管
+    tokenExpiresAt: account.platform === 'threads' || (account.platform === 'instagram' && isInstagramLoginToken(token)) ? new Date(Date.now() + 60 * 86400_000).toISOString() : null,
     lastError: subscribeError, createdAt: nowIso(),
   }
   await useDb().insert(connections).values(values).onConflictDoUpdate({ target: connections.accountId, set: values })

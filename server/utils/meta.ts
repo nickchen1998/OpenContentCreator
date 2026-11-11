@@ -6,14 +6,22 @@ export const isMetaPlatform = (p: string): p is MetaPlatform => p === 'instagram
 export const hasWebhook = (p: MetaPlatform) => p !== 'threads'
 
 const HOSTS: Record<MetaPlatform, string> = {
-  instagram: 'https://graph.instagram.com/v23.0',
-  facebook: 'https://graph.facebook.com/v23.0',
+  instagram: 'https://graph.facebook.com/v27.0',
+  facebook: 'https://graph.facebook.com/v27.0',
   threads: 'https://graph.threads.net/v1.0',
 }
+/**
+ * Instagram 有兩種設定，token 與主機都不一樣、不能混用：
+ * - 統一登入（Unified Login，2026 起新建的 App 只有這個）：token 是 EAA 開頭的系統用戶權杖，打 graph.facebook.com
+ * - 舊的「Instagram 登入」：token 是 IG 開頭，打 graph.instagram.com，60 天到期要換新
+ * 用 token 的開頭分辨，不另外存欄位。
+ */
+export const isInstagramLoginToken = (token: string) => token.startsWith('IG')
 // 測試時可以用 NUXT_META_API_BASE 指到假的伺服器（網址後面接 /instagram、/facebook、/threads）
-const base = (platform: MetaPlatform) => {
+const base = (platform: MetaPlatform, token: string) => {
   const override = useRuntimeConfig().metaApiBase
-  return override ? `${override}/${platform}` : HOSTS[platform]
+  if (override) return `${override}/${platform}`
+  return platform === 'instagram' && isInstagramLoginToken(token) ? 'https://graph.instagram.com/v27.0' : HOSTS[platform]
 }
 
 export class MetaError extends Error {
@@ -25,7 +33,7 @@ export class MetaError extends Error {
 interface CallInit { method?: string, body?: unknown, query?: Record<string, string> }
 
 async function call<T = any>(platform: MetaPlatform, token: string, path: string, init: CallInit = {}): Promise<T> {
-  const url = new URL(`${base(platform)}${path}`)
+  const url = new URL(`${base(platform, token)}${path}`)
   for (const [k, v] of Object.entries(init.query ?? {})) url.searchParams.set(k, v)
   let response: Response
   try {
@@ -46,12 +54,25 @@ async function call<T = any>(platform: MetaPlatform, token: string, path: string
   return data
 }
 
-/** 用 token 查出它代表哪個帳號。Instagram 與粉專回傳的 id 就是 webhook 的 entry.id */
-export async function identify(platform: MetaPlatform, token: string) {
-  if (platform === 'instagram') {
+/**
+ * 用 token 查出它代表哪個帳號。Instagram 與粉專回傳的 id 就是 webhook 的 entry.id。
+ * hint 是使用者在帳號群組填的帳號名稱：統一登入的 token 可能同時授權了好幾個 Instagram 帳號，用它挑出是哪一個。
+ */
+export async function identify(platform: MetaPlatform, token: string, hint = '') {
+  if (platform === 'instagram' && isInstagramLoginToken(token)) {
     const me = await call(platform, token, '/me', { query: { fields: 'user_id,username' } })
     if (!me.user_id) throw new MetaError('這個 token 不是 Instagram 專業帳號的 token')
     return { externalId: String(me.user_id), externalName: String(me.username ?? '') }
+  }
+  if (platform === 'instagram') {
+    // 統一登入：/me 是系統用戶不是帳號，要從「被指派的 Instagram 帳號」裡找
+    const data = await call(platform, token, '/me/assigned_instagram_accounts', { query: { fields: 'id,username' } })
+    const list: { id: string, username?: string }[] = data.data ?? []
+    if (!list.length) throw new MetaError('這個 token 沒有被授權任何 Instagram 帳號')
+    const wanted = hint.trim().replace(/^@/, '').toLowerCase()
+    const picked = list.length === 1 ? list[0]! : list.find(a => String(a.username ?? '').toLowerCase() === wanted)
+    if (!picked) throw new MetaError(`這個 token 授權了多個 Instagram 帳號（${list.map(a => a.username).join('、')}），請把這裡的帳號名稱改成其中一個再連結`)
+    return { externalId: String(picked.id), externalName: String(picked.username ?? '') }
   }
   if (platform === 'threads') {
     const me = await call(platform, token, '/me', { query: { fields: 'id,username' } })
@@ -107,7 +128,7 @@ export async function postCaption(platform: MetaPlatform, token: string, postId:
 }
 const clip = (text: unknown) => String(text ?? '').replace(/\s+/g, ' ').slice(0, 40)
 
-/** 長效 token 60 天到期，滿 24 小時後可以換新（再 60 天）。粉專的 Page token 不會到期，不用換 */
+/** 「Instagram 登入」與 Threads 的長效 token 60 天到期，滿 24 小時後可以換新（再 60 天）。粉專與統一登入的 token 不走這裡 */
 export async function refreshToken(platform: 'instagram' | 'threads', token: string) {
   const data = await call(platform, token, '/refresh_access_token', {
     query: { grant_type: platform === 'instagram' ? 'ig_refresh_token' : 'th_refresh_token', access_token: token },

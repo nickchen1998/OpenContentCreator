@@ -36,6 +36,9 @@
 - 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。
 - **還沒有用真的 Meta App 驗證過**：目前的測試是對著本機的假 Graph API（設 `NUXT_META_API_BASE`）。端點、欄位、權限名稱
   是照 2026-11 查到的官方文件寫的，第一次接真的帳號時要逐項核對，尤其是 Facebook 的觀看數指標與各平台 webhook 的 payload。
+- Instagram 有兩種設定：2026 起新建的 Meta App 只有「統一登入（Unified Login）」（EAA 開頭的系統用戶權杖、graph.facebook.com、
+  要連結商家資產管理組合、帳號從 `/me/assigned_instagram_accounts` 找）；舊 App 才有「Instagram 登入」（IG 開頭、graph.instagram.com）。
+  `server/utils/meta.ts` 用 token 開頭分辨，兩種都支援。
 - 規則的「指定貼文」存的是平台上的貼文 id（`reply_rules.external_post_id`），不是我們自己的 posts.id。
 - 排程每次只處理少量再輪替（Free 方案每次 50 個對外請求、50 個 D1 查詢）；不要在迴圈裡每筆查一次 D1。
 - 本機觸發排程：`wrangler dev --test-scheduled` 後打 `/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*`。
