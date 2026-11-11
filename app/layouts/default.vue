@@ -12,6 +12,7 @@ const sections = computed(() => [
   { label: 'Workspace', items: [
     { to: '/', en: 'Dashboard', zh: '儀表板' },
     { to: '/series', en: 'Series', zh: '系列文管理' },
+    { to: '/threads', en: 'Threads', zh: '串文管理' },
     { to: '/schedule', en: 'Schedule', zh: '排程週曆' },
   ] },
   { label: 'Setup', items: [

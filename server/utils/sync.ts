@@ -132,14 +132,20 @@ export async function refreshExpiringTokens(limit = 20) {
  * 每次處理最久沒輪到的幾個帳號；每個帳號看最近 5 則貼文，只處理連結之後才出現、而且還沒收過的回覆。
  */
 const THREADS_PER_POLL = 6
-const THREADS_ALWAYS = 3
-/** 這一輪要檢查哪幾則：最新的 THREADS_ALWAYS 則固定看，剩下的名額由其餘貼文依輪次（每 5 分鐘加一）輪流 */
-export function pickForPoll<T>(posts: T[], round: number): T[] {
+/**
+ * 這一輪要檢查哪幾則 Threads 貼文（posts 由新到舊）：最新的 2 則每輪都看，剩下 4 個名額由「系列文裡的」與「其他的」各分一半，
+ * 各自依輪次（每 5 分鐘加一）輪流；其中一邊不夠就把名額讓給另一邊。系列文裡的會自動回覆，所以輪到的機會比較多。
+ */
+export function pickForPoll<T extends { inSeries: unknown }>(posts: T[], round: number): T[] {
   if (posts.length <= THREADS_PER_POLL) return posts
-  const rest = posts.slice(THREADS_ALWAYS)
-  const n = THREADS_PER_POLL - THREADS_ALWAYS
-  const start = (round * n) % rest.length
-  return [...posts.slice(0, THREADS_ALWAYS), ...Array.from({ length: n }, (_, i) => rest[(start + i) % rest.length]!)]
+  const always = posts.slice(0, 2)
+  const rest = posts.slice(2)
+  const series = rest.filter(p => p.inSeries != null)
+  const others = rest.filter(p => p.inSeries == null)
+  const slots = THREADS_PER_POLL - always.length
+  const forSeries = Math.min(series.length, Math.max(slots / 2, slots - others.length))
+  const rotate = (list: T[], n: number) => Array.from({ length: Math.min(n, list.length) }, (_, i) => list[(round * n + i) % list.length]!)
+  return [...always, ...rotate(series, forSeries), ...rotate(others, slots - forSeries)]
 }
 
 export async function pollThreads(maxConnections = 3) {
@@ -153,12 +159,11 @@ export async function pollThreads(maxConnections = 3) {
     await db.update(connections).set({ lastPolledAt: nowIso() }).where(eq(connections.id, connection.id))
     try {
       const token = await unseal(connection.tokenEnc)
-      // 只看系列文裡的貼文（不在系列文裡的留言本來就不處理），不是「最近幾則」：舊貼文只要還在系列文裡就要一直顧到。
-      // 每輪最多 THREADS_PER_POLL 則（每則 1 個請求）：最新的幾則每輪都看，其餘的照時間輪流
-      const inSeries = await db.select({ id: accountPosts.externalId }).from(accountPosts)
-        .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
+      // 已同步的貼文都會輪到（串文管理頁要看得到每則的回覆），每輪最多 THREADS_PER_POLL 則（每則 1 個請求）
+      const known = await db.select({ id: accountPosts.externalId, inSeries: collectionPosts.collectionId }).from(accountPosts)
+        .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .where(eq(accountPosts.accountId, connection.accountId)).orderBy(desc(accountPosts.publishedAt)).limit(200)
-      const threads = pickForPoll(inSeries, Math.floor(Date.now() / 300_000))
+      const threads = pickForPoll(known, Math.floor(Date.now() / 300_000))
       if (!threads.length) continue
       // 已經收過的回覆一次查出來，不要每則回覆查一次（Free 方案每次 50 個 D1 查詢）
       const seen = new Set((await db.select({ externalId: comments.externalId }).from(comments)
@@ -168,16 +173,16 @@ export async function pollThreads(maxConnections = 3) {
       let handled = 0
       for (const thread of threads) {
         const replies = await listThreadReplies(token, thread.id)
-        // 連結之前就在的舊回覆不補回，否則一連結就會對歷史留言洗一輪
-        const fresh = replies.filter(r => !seen.has(r.id) && r.timestamp && new Date(r.timestamp).toISOString() > connection.createdAt).reverse()
-        // 回一則 Threads 要 2 個請求，一個帳號一輪最多回 8 則，剩下的下一輪再處理
-        for (const reply of fresh.slice(0, Math.max(0, 8 - handled))) {
+        const fresh = replies.filter(r => !seen.has(r.id) && r.timestamp && r.text.trim() && r.username !== connection.externalName).reverse()
+        // 回一則 Threads 要 2 個請求、每則還要幾個 D1 查詢，一個帳號一輪最多處理 6 則，剩下的下一輪再處理
+        for (const reply of fresh.slice(0, Math.max(0, 6 - handled))) {
           handled++
           boot ??= await loadBoot(ownerId)
-          await receive(boot, 'threads', connection, {
-            externalId: reply.id, senderId: reply.username, author: `@${reply.username}`, text: reply.text,
-            externalPostId: thread.id,
-          })
+          const at = new Date(reply.timestamp).toISOString()
+          const incoming = { externalId: reply.id, senderId: reply.username, author: `@${reply.username}`, text: reply.text, externalPostId: thread.id }
+          // 連結之前就在的舊回覆只記錄、不自動送出（命中系列文設定的會是「待送出」），否則一連結就會對歷史留言洗一輪
+          if (at > connection.createdAt) await receive(boot, 'threads', connection, incoming)
+          else await processComment(boot, { accountId: connection.accountId, ...incoming, at }).catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
         }
       }
       if (connection.lastError) await db.update(connections).set({ lastError: '' }).where(eq(connections.id, connection.id))

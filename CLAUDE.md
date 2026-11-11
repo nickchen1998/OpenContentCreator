@@ -49,7 +49,7 @@
 - 圖表用 Chart.js，包在 `app/components/BarChart.vue`（只註冊長條圖用到的部分）。互動組成的四個顏色用 dataviz 的
   `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。每組圖表下面留一個「資料表」。
 - 留言紀錄用 `comments.collection_id` 歸屬系列文，顯示在系列成效頁。`comments.rule_id`／`rule_name`／`kind` 是舊欄位。
-- 側欄順序：Dashboard、Series、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
+- 側欄順序：Dashboard、Series、Threads（串文管理）、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
   點進去就是成效頁（一個系列文只有一頁）。新增與設定共用 `SeriesDialog`（畫面中間的視窗），貼文清單在區塊內捲動並分頁。
 
 ## 平台串接
@@ -60,7 +60,10 @@
 - **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。YouTube 之後由站方在 GCP 申請。
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
   驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
-- Threads 輪詢只看**系列文裡的貼文**（最新 3 則每輪都看，其餘輪流，`pickForPoll`），不是「最近幾則」。回覆是先建 container 再發布，
+- **串文管理（`/threads`）是 Threads 專用的頁面**：Threads 發得多、大部分不屬於任何系列文，所以 Threads 是唯一「不在系列文裡也記錄留言」的平台
+  （記成未回覆、不自動回，由會員在這一頁手動回或按「不用回」）；自動回覆仍然只跟著系列文。頁面上可以直接把貼文放進／移出系列文。
+  不要給 Threads 加「所有貼文都自動回」的帳號層級規則。
+- Threads 輪詢會輪到所有已同步的貼文（最新 2 則每輪都看，其餘名額系列文與非系列文各半輪流，`pickForPoll`）；連結之前的舊回覆只記錄、不自動送出。回覆是先建 container 再發布，
   太快發布會回「The requested resource does not exist」，`replyToComment` 會等幾秒重試。
 - 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。
 - **實測狀態（2026-11-11）**：Instagram（統一登入）已用真的帳號驗證：連結、收留言 webhook、回覆留言、留言後私訊都通，
