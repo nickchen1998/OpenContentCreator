@@ -135,9 +135,10 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
 <template>
   <div v-if="missing" class="empty">找不到這則貼文。<NuxtLink to="/">返回排程</NuxtLink></div>
   <template v-else-if="post">
-    <NuxtLink :to="{ path: '/', query: { w: mondayOf(post.scheduledAt.slice(0, 10)) } }" style="align-self: flex-start; font-size: 14px; padding: 12px 0">返回排程</NuxtLink>
+    <NuxtLink :to="{ path: '/', query: { w: mondayOf(post.scheduledAt.slice(0, 10)) } }" class="btn-text" style="align-self: flex-start; padding-left: 0">← 返回排程</NuxtLink>
     <div class="row between gap-lg">
       <div class="col" style="gap: 8px">
+        <p class="en-label">Post · 貼文素材與文案</p>
         <h1 class="wrap-any">{{ post.title }}</h1>
         <div class="row" style="font-size: 14px; color: var(--text-2)">
           <span class="tag lg" :style="projectStyle(post.projectId)">{{ projectLabel(post) }}</span>

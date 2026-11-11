@@ -70,6 +70,7 @@ const projectsOf = (g: Group) => boot.value.projects
 <template>
   <div class="row between gap-lg">
     <div class="col" style="flex: 1 1 420px">
+      <p class="en-label">Groups · 帳號群組</p>
       <h1>帳號群組</h1>
       <div class="lead">一個群組是一組同主題的帳號。排程、成效、回覆規則與 MCP 授權都以群組為單位；同一個平台可以在不同群組各放一個帳號。</div>
     </div>
@@ -79,14 +80,14 @@ const projectsOf = (g: Group) => boot.value.projects
   <div class="grid-2">
     <section v-for="g in boot.groups" :key="g.id" class="card" style="padding: 24px; gap: 18px">
       <div class="col">
-        <h2 style="font-size: 22px">{{ g.name }}</h2>
+        <h2 style="font-size: 19px; font-weight: 800">{{ g.name }}</h2>
         <div v-if="g.topic" class="muted" style="font-size: 14px">主題：{{ g.topic }}</div>
       </div>
       <div class="col" style="gap: 8px">
         <div class="small muted">帳號</div>
         <div v-for="a in g.accounts" :key="a.id" class="row between" style="border-top: 1px solid var(--line); padding-top: 10px; gap: 12px">
           <span style="font-weight: 500">{{ PLATFORMS[a.platform].label }}</span>
-          <span class="row"><span class="wrap-any">{{ a.name }}</span><button type="button" class="btn" style="min-height: 36px; padding: 0 12px" :aria-label="`編輯 ${PLATFORMS[a.platform].label} ${a.name}`" @click="openAccount(g, a)">編輯</button></span>
+          <span class="row"><span class="wrap-any">{{ a.name }}</span><button type="button" class="btn sm" :aria-label="`編輯 ${PLATFORMS[a.platform].label} ${a.name}`" @click="openAccount(g, a)">編輯</button></span>
         </div>
         <div v-if="!g.accounts.length" class="small muted">還沒有帳號</div>
       </div>
@@ -111,7 +112,7 @@ const projectsOf = (g: Group) => boot.value.projects
 
   <section class="card" style="gap: 10px">
     <h2>群組怎麼影響其他功能</h2>
-    <div class="note" style="font-size: 15px; line-height: 1.8">排程：撞期與間隔以單一帳號計算，不同群組的同平台帳號互不影響。<br>成效：各帳號分開列，並依群組合併。<br>留言回覆：固定回覆規則掛在群組或群組內的單一帳號上。<br>MCP：專案的 token 綁定群組，連進來只看得到該群組的排程與成效。</div>
+    <div class="note" style="line-height: 1.9">排程：撞期與間隔以單一帳號計算，不同群組的同平台帳號互不影響。<br>成效：各帳號分開列，並依群組合併。<br>留言回覆：固定回覆規則掛在群組或群組內的單一帳號上。<br>MCP：專案的 token 綁定群組，連進來只看得到該群組的排程與成效。</div>
   </section>
 
   <AppDialog v-model="groupOpen" :title="editing ? '編輯群組' : '新增群組'" :error="error" @submit="saveGroup">

@@ -3,7 +3,7 @@ import { posts, postTargets } from '../../database/schema'
 // 自己在網頁上新增規劃：直接進排程（撞期只提醒，不擋）
 export default defineEventHandler(async (event) => {
   const body = await bodyOf(event)
-  const boot = await loadBoot()
+  const boot = await loadBoot(uidOf(event))
   const groupId = int(body.groupId, '群組', 1)
   const accountIds = idList(body.accountIds, '帳號')
   assertAccountsInGroup(boot, groupId, accountIds)

@@ -1,6 +1,19 @@
-// 整個系統只有一個使用者：/api 底下除了登入與 session 以外都要先登入。/mcp 自己驗專案 token。
+import { eq } from 'drizzle-orm'
+import { users } from '../database/schema'
+
+// /api 底下除了登入與 session 以外都要先登入，並把會員 id 放進 event.context.userId。/mcp 自己驗專案 token。
+// 每個請求都依 id 重新查一次會員：帳號被刪掉，手上的 session 就立刻失效。
 export default defineEventHandler(async (event) => {
   const path = event.path.split('?')[0]!
-  if (!path.startsWith('/api/') || path.startsWith('/api/auth/') || path.startsWith('/api/_auth/')) return
-  await requireUserSession(event)
+  if (!path.startsWith('/api/') || path.startsWith('/api/auth/login') || path.startsWith('/api/_auth/')) return
+  const session = await requireUserSession(event)
+  const id = (session.user as { id?: unknown }).id
+  // 多會員制之前發的 session 沒有 id，一律當成沒登入
+  const [user] = typeof id === 'number' ? await useDb().select({ id: users.id, isAdmin: users.isAdmin }).from(users).where(eq(users.id, id)) : []
+  if (!user) {
+    await clearUserSession(event)
+    throw createError({ statusCode: 401, message: 'Unauthorized' })
+  }
+  event.context.userId = user.id
+  event.context.isAdmin = user.isAdmin
 })

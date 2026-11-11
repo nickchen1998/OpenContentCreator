@@ -60,6 +60,5 @@ export default defineNuxtConfig({
   // 執行時由同名的 NUXT_* 環境變數覆蓋（Workers 上用 wrangler secret），不要寫 process.env
   runtimeConfig: {
     session: { maxAge: 60 * 60 * 24 * 30 },
-    adminPassword: '',
   },
 })

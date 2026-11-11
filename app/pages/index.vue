@@ -40,6 +40,7 @@ function saved() {
 <template>
   <div class="row between gap-lg">
     <div class="col">
+      <p class="en-label">Schedule · 排程週曆</p>
       <h1>排程</h1>
       <div class="muted">{{ weekStart.slice(0, 4) }}/{{ fmtDayFull(weekStart) }}– {{ fmtDayFull(addDays(weekStart, 6)) }}</div>
     </div>
@@ -74,12 +75,12 @@ function saved() {
     <div class="week">
       <section v-for="d in days" :key="d.day" class="day" :class="{ today: d.day === today }" :aria-label="`${d.label} ${d.date}`">
         <div class="row between" style="align-items: baseline">
-          <div class="bold">{{ d.label }}</div>
+          <div class="day-name">{{ d.label }}</div>
           <div class="small muted">{{ d.date }}</div>
         </div>
         <article v-for="p in d.posts" :key="p.id" class="post" :class="kind(p)">
           <div class="row between" style="gap: 6px">
-            <span class="bold" style="font-size: 14px">{{ p.scheduledAt.slice(11) }}</span>
+            <span class="bold" style="font-size: 13.5px">{{ p.scheduledAt.slice(11) }}</span>
             <span class="small" :class="`status-${kind(p)}`" style="font-size: 12px">{{ KIND_LABEL[kind(p)] }}</span>
           </div>
           <NuxtLink :to="`/posts/${p.id}`" class="title">{{ p.title }}</NuxtLink>
@@ -93,7 +94,7 @@ function saved() {
   </div>
 
   <div class="card" style="flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 16px 20px">
-    <div class="grow" style="flex-basis: 420px; line-height: 1.6">這份排程是發文計畫，系統不會代發：點貼文標題可以進去下載素材、複製文案，發出後把連結貼回來並登錄成效。虛線卡片是其他專案透過 MCP 送來的提案，確認後才會進入排程；紅色卡片與同一個帳號的既有貼文撞期。不同群組的帳號各自計算，不會互相撞期。</div>
+    <div class="grow note" style="flex-basis: 420px">這份排程是發文計畫，系統不會代發：點貼文標題可以進去下載素材、複製文案，發出後把連結貼回來並登錄成效。虛線卡片是其他專案透過 MCP 送來的提案，確認後才會進入排程；紅色卡片與同一個帳號的既有貼文撞期。不同群組的帳號各自計算，不會互相撞期。</div>
     <NuxtLink to="/connections" class="btn outline">前往處理提案</NuxtLink>
   </div>
 

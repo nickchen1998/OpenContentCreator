@@ -2,9 +2,31 @@ import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlit
 
 const id = () => integer('id').primaryKey({ autoIncrement: true })
 
+// 會員：帳號加密碼登入，各自的資料互相看不到。帳號由管理員建立，沒有開放註冊
+export const users = sqliteTable('users', {
+  id: id(),
+  username: text('username').notNull().unique(), // 一律小寫
+  passwordHash: text('password_hash').notNull(), // pbkdf2$<次數>$<salt hex>$<hash hex>
+  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull(),
+})
+
+// 帳密登入防爆破的計數。key 是帳號（不是 IP），帳號不存在也照樣計數
+export const loginFailures = sqliteTable('login_failures', {
+  username: text('username').primaryKey(),
+  fails: integer('fails').notNull(),
+  lockedUntil: integer('locked_until').notNull(), // epoch ms
+  lastAt: integer('last_at').notNull(),
+})
+
+// 資料的擁有者只記在 groups 與 projects 上，其他表都經由群組（或專案）歸屬到會員。
+// owner_id 在資料庫是可空的（SQLite 不能對既有的表加 NOT NULL 的外鍵欄位），程式一律會填。
+const ownerId = () => integer('owner_id').references(() => users.id, { onDelete: 'cascade' })
+
 // 帳號群組：一組同主題的帳號。排程、成效、回覆規則與 MCP 授權都以群組為單位
 export const groups = sqliteTable('groups', {
   id: id(),
+  ownerId: ownerId(),
   name: text('name').notNull(),
   topic: text('topic').notNull().default(''),
   createdAt: text('created_at').notNull(),
@@ -20,6 +42,7 @@ export const accounts = sqliteTable('accounts', {
 // 專案：各自的 Claude 用自己的 token 透過 MCP 連進來。token 只存 sha256
 export const projects = sqliteTable('projects', {
   id: id(),
+  ownerId: ownerId(),
   name: text('name').notNull(),
   color: text('color').notNull().default('blue'),
   tokenHash: text('token_hash').notNull().unique(),
@@ -76,10 +99,12 @@ export const assets = sqliteTable('assets', {
   createdAt: text('created_at').notNull(),
 }, t => [index('assets_post_idx').on(t.postId)])
 
-export const settings = sqliteTable('settings', {
-  key: text('key').primaryKey(),
+// 每個會員自己的協調規則（最小間隔、每日上限、每小時回覆上限）
+export const userSettings = sqliteTable('user_settings', {
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),
   value: text('value').notNull(),
-})
+}, t => [primaryKey({ columns: [t.userId, t.key] })])
 
 // 固定回覆規則：掛在群組，或群組內的單一帳號、單一貼文
 export const replyRules = sqliteTable('reply_rules', {

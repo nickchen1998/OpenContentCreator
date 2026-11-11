@@ -12,11 +12,13 @@ export interface Slot {
 }
 
 export async function loadSlots(boot: Boot, fromDay: string, toDay: string): Promise<Slot[]> {
+  const groupIds = boot.groups.map(g => g.id)
+  if (!groupIds.length) return []
   const rows = await useDb()
     .select({ postId: posts.id, title: posts.title, accountId: postTargets.accountId, at: posts.scheduledAt, status: posts.status, projectId: posts.projectId, groupId: posts.groupId })
     .from(postTargets)
     .innerJoin(posts, eq(posts.id, postTargets.postId))
-    .where(and(inArray(posts.status, ['scheduled', 'pending']), gte(posts.scheduledAt, `${fromDay}T00:00`), lte(posts.scheduledAt, `${toDay}T23:59`)))
+    .where(and(inIdList(posts.groupId, groupIds), inArray(posts.status, ['scheduled', 'pending']), gte(posts.scheduledAt, `${fromDay}T00:00`), lte(posts.scheduledAt, `${toDay}T23:59`)))
   return rows.map(r => ({ postId: r.postId, title: r.title, accountId: r.accountId, at: r.at, status: r.status as Slot['status'], priority: priorityOf(boot, r.projectId, r.groupId) }))
 }
 

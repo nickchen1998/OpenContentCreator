@@ -21,6 +21,7 @@ const GROUP_COLORS = ['#1F4FA3', '#0F5C55', '#7A4300', '#4B2FA3', '#8A1F52']
 <template>
   <div class="row between gap-lg">
     <div class="col">
+      <p class="en-label">Insights · 成效總覽</p>
       <h1>成效總覽</h1>
       <div class="muted">近 {{ days }} 天，{{ boot.groups.length }} 個群組、{{ summary.rows.length }} 個帳號合併。只計入已貼上連結的貼文，數字來自你在貼文頁登錄的成效。</div>
     </div>

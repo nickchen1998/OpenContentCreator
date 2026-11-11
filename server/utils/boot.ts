@@ -1,16 +1,22 @@
-import { accounts, groups, projectGroups, projects, settings } from '../database/schema'
+import { eq } from 'drizzle-orm'
+import { accounts, groups, projectGroups, projects, userSettings } from '../database/schema'
 
 export const DEFAULT_RULES: Rules = { minGapHours: 3, maxPerDay: 2, replyPerHour: 20 }
 
-/** 群組、帳號、專案與協調規則：幾乎每個端點都要用，一趟 batch 讀完。 */
-export async function loadBoot(): Promise<Boot> {
+/**
+ * 某個會員的群組、帳號、專案與協調規則：幾乎每個端點都要用，一趟 batch 讀完。
+ * 這也是資料隔離的基礎：端點拿到的群組／帳號／專案 id 都要在這份 boot 裡才算數。
+ */
+export async function loadBoot(uid: number): Promise<Boot> {
   const db = useDb()
   const [groupRows, accountRows, projectRows, grantRows, settingRows] = await db.batch([
-    db.select().from(groups).orderBy(groups.id),
-    db.select().from(accounts).orderBy(accounts.id),
-    db.select({ id: projects.id, name: projects.name, color: projects.color, tokenPrefix: projects.tokenPrefix }).from(projects).orderBy(projects.id),
-    db.select().from(projectGroups).orderBy(projectGroups.priority),
-    db.select().from(settings),
+    db.select({ id: groups.id, name: groups.name, topic: groups.topic }).from(groups).where(eq(groups.ownerId, uid)).orderBy(groups.id),
+    db.select({ id: accounts.id, groupId: accounts.groupId, platform: accounts.platform, name: accounts.name }).from(accounts)
+      .innerJoin(groups, eq(groups.id, accounts.groupId)).where(eq(groups.ownerId, uid)).orderBy(accounts.id),
+    db.select({ id: projects.id, name: projects.name, color: projects.color, tokenPrefix: projects.tokenPrefix }).from(projects).where(eq(projects.ownerId, uid)).orderBy(projects.id),
+    db.select({ projectId: projectGroups.projectId, groupId: projectGroups.groupId, priority: projectGroups.priority, canReadInsights: projectGroups.canReadInsights }).from(projectGroups)
+      .innerJoin(projects, eq(projects.id, projectGroups.projectId)).where(eq(projects.ownerId, uid)).orderBy(projectGroups.priority),
+    db.select().from(userSettings).where(eq(userSettings.userId, uid)),
   ])
   const stored = Object.fromEntries(settingRows.map(r => [r.key, r.value]))
   const rules = { ...DEFAULT_RULES }

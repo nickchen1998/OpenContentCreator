@@ -5,7 +5,7 @@ import { posts, postTargets } from '../../../database/schema'
 export default defineEventHandler(async (event) => {
   const id = idParam(event)
   const body = await bodyOf(event)
-  const boot = await loadBoot()
+  const boot = await loadBoot(uidOf(event))
   const post = await loadPost(boot, id)
   const db = useDb()
   const set: Partial<typeof posts.$inferInsert> = {}

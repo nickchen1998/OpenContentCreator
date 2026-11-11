@@ -1,7 +1,8 @@
-import { asc } from 'drizzle-orm'
-import { replyRules } from '../../database/schema'
+import { asc, eq } from 'drizzle-orm'
+import { groups, replyRules } from '../../database/schema'
 
-export default defineEventHandler(async () => {
-  const rows = await useDb().select().from(replyRules).orderBy(asc(replyRules.id))
-  return rows.map(({ cursor: _, createdAt: __, ...r }) => r)
+export default defineEventHandler(async (event) => {
+  const rows = await useDb().select({ rule: replyRules }).from(replyRules)
+    .innerJoin(groups, eq(groups.id, replyRules.groupId)).where(eq(groups.ownerId, uidOf(event))).orderBy(asc(replyRules.id))
+  return rows.map(({ rule: { cursor: _, createdAt: __, ...r } }) => r)
 })

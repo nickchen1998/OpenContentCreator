@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
-import { comments, replyRules } from '../database/schema'
+import { accounts, comments, groups, replyRules } from '../database/schema'
 
 export interface IncomingComment { accountId: number, postId?: number | null, postTitle: string, author: string, text: string }
 
@@ -68,4 +68,9 @@ async function insert(values: typeof comments.$inferInsert) {
   return row!
 }
 
-export const listComments = () => useDb().select().from(comments).orderBy(desc(comments.createdAt), desc(comments.id)).limit(100)
+export async function listComments(uid: number) {
+  const rows = await useDb().select({ comment: comments }).from(comments)
+    .innerJoin(accounts, eq(accounts.id, comments.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
+    .where(eq(groups.ownerId, uid)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(100)
+  return rows.map(r => r.comment)
+}
