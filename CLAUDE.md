@@ -34,8 +34,11 @@
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
   驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
 - 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。
-- **還沒有用真的 Meta App 驗證過**：目前的測試是對著本機的假 Graph API（設 `NUXT_META_API_BASE`）。端點、欄位、權限名稱
-  是照 2026-11 查到的官方文件寫的，第一次接真的帳號時要逐項核對，尤其是 Facebook 的觀看數指標與各平台 webhook 的 payload。
+- **實測狀態（2026-11-11）**：Instagram（統一登入）已用真的帳號驗證：連結、收留言 webhook、回覆留言、留言後私訊都通，
+  不送審的 App 也收得到一般人的留言。**Instagram 的 webhook 是用「Instagram 應用程式密鑰」簽的，不是 Meta App 的 app secret**
+  （用錯會全部 403「簽章不符」）。Facebook 粉專、Threads、成效同步、私訊規則還只對著本機的假 Graph API（`NUXT_META_API_BASE`）
+  測過，第一次接真帳號時要核對，尤其是 Facebook 的觀看數指標。
+- webhook 被擋時會 `console.warn('meta hook rejected', …)` 記下原因（沒有對應的連結／簽章不符），用 `wrangler tail` 看。
 - Instagram 有兩種設定：2026 起新建的 Meta App 只有「統一登入（Unified Login）」（EAA 開頭的系統用戶權杖、graph.facebook.com、
   要連結商家資產管理組合、帳號從 `/me/assigned_instagram_accounts` 找）；舊 App 才有「Instagram 登入」（IG 開頭、graph.instagram.com）。
   `server/utils/meta.ts` 用 token 開頭分辨，兩種都支援。
