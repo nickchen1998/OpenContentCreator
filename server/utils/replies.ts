@@ -3,7 +3,7 @@ import { accounts, comments, groups, replyRules } from '../database/schema'
 
 export interface Incoming {
   accountId: number
-  kind: 'comment' | 'message'
+  kind: 'comment'
   author: string
   text: string
   postId?: number | null
@@ -15,28 +15,23 @@ export interface Incoming {
 }
 
 /**
- * 固定回覆的規則引擎：留言與私訊共用。只有命中規則的才會得到一句事先寫好的回覆，沒命中的不處理。
- * 防洗版：留言是同一個人在同一則貼文只回一次；私訊是同一個人同一條規則 24 小時內只回一次；
- * 每個帳號每小時回覆有上限；多句輪替。
+ * 固定回覆的規則引擎。只有命中規則的留言才會得到一句事先寫好的回覆（規則有設的話再加一則私訊），沒命中的不處理。
+ * 防洗版：同一個人在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
  * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
 export async function processComment(boot: Boot, input: Incoming) {
   const db = useDb()
   const account = allAccounts(boot).find(a => a.id === input.accountId)
   if (!account) throw bad('找不到這個帳號')
-  const isMessage = input.kind === 'message'
   const who = input.senderId ? eq(comments.senderId, input.senderId) : eq(comments.author, input.author)
   const answered = inArray(comments.status, ['ready', 'sent'])
   const hourAgo = new Date(Date.now() - 3600_000).toISOString()
-  const dayAgo = new Date(Date.now() - 86400_000).toISOString()
   const [rules, earlier, recent] = await db.batch([
     db.select().from(replyRules).where(and(eq(replyRules.groupId, account.groupId), eq(replyRules.enabled, true), eq(replyRules.channel, input.kind))),
     // 這個人之前已經被回過的紀錄
     db.select({ ruleId: comments.ruleId }).from(comments).where(and(
-      eq(comments.accountId, input.accountId), eq(comments.kind, input.kind), who, answered,
-      isMessage
-        ? gte(comments.createdAt, dayAgo)
-        : input.externalPostId ? eq(comments.externalPostId, input.externalPostId) : eq(comments.postTitle, input.postTitle ?? ''),
+      eq(comments.accountId, input.accountId), who, answered,
+      input.externalPostId ? eq(comments.externalPostId, input.externalPostId) : eq(comments.postTitle, input.postTitle ?? ''),
     )),
     db.select({ n: sql<number>`count(*)` }).from(comments).where(and(eq(comments.accountId, input.accountId), answered, gte(comments.createdAt, hourAgo))),
   ])
@@ -51,7 +46,6 @@ export async function processComment(boot: Boot, input: Incoming) {
     // 範圍越小的規則越優先；同範圍時關鍵字規則優先於「任何留言」
     .sort((a, b) => specificity(b) - specificity(a) || Number(a.matchType === 'any') - Number(b.matchType === 'any') || a.id - b.id)[0]
 
-  const noun = isMessage ? '訊息' : '留言'
   const base = {
     accountId: input.accountId, kind: input.kind, postTitle: input.postTitle ?? '', author: input.author, text: input.text, createdAt: nowIso(),
     externalId: input.externalId ?? null, externalPostId: input.externalPostId ?? '', senderId: input.senderId ?? '',
@@ -59,19 +53,18 @@ export async function processComment(boot: Boot, input: Incoming) {
   if (!rule) return insert({ ...base, status: 'unmatched', reason: '沒有命中任何規則' })
 
   const hit = rule.matchType === 'any'
-    ? `命中「${rule.name}」（任何${noun}）`
+    ? `命中「${rule.name}」（任何留言）`
     : `命中「${rule.name}」（關鍵字「${keywordsOf(rule.keywords).find(k => text.includes(k.toLowerCase()))}」）`
   const matched = { ...base, ruleId: rule.id, ruleName: rule.name }
-  const repeated = isMessage ? earlier.some(e => e.ruleId === rule.id) : earlier.length > 0
-  if (repeated) {
-    return insert({ ...matched, status: 'skipped', reason: `${hit}，但${isMessage ? '24 小時內已經回過這個人' : '這個人在這則貼文已經回過'}` })
+  if (earlier.length) {
+    return insert({ ...matched, status: 'skipped', reason: `${hit}，但這個人在這則貼文已經回過` })
   }
   if (boot.rules.replyPerHour > 0 && (recent[0]?.n ?? 0) >= boot.rules.replyPerHour) {
     return insert({ ...matched, status: 'skipped', reason: `${hit}，但這個帳號這一小時已達上限 ${boot.rules.replyPerHour} 則` })
   }
   const index = rule.cursor % rule.replies.length
   // 留言後私訊只有 Instagram 與 Facebook 做得到；規則掛在整個群組時，其他平台的帳號只回留言
-  const withDm = !isMessage && rule.action === 'reply_dm' && (account.platform === 'instagram' || account.platform === 'facebook')
+  const withDm = rule.action === 'reply_dm' && (account.platform === 'instagram' || account.platform === 'facebook')
   const [, created] = await db.batch([
     db.update(replyRules).set({ cursor: rule.cursor + 1 }).where(eq(replyRules.id, rule.id)),
     db.insert(comments).values({

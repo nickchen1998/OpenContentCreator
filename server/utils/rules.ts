@@ -18,7 +18,7 @@ export async function ruleValues(uid: number, body: Record<string, unknown>) {
   const replies = (Array.isArray(body.replies) ? body.replies : []).map(r => str(r, '回覆內容', 500, false)).filter(Boolean)
   if (!replies.length) throw bad('請至少寫一句固定回覆')
   if (replies.length > 20) throw bad('固定回覆最多 20 句')
-  const channel = body.channel === 'message' ? 'message' : 'comment'
+  const channel = 'comment' as const // 只有留言規則；私訊自動回覆不做
   // 指定貼文：貼文屬於某一個帳號，所以一定要先選帳號
   const externalPostId = channel === 'comment' ? str(body.externalPostId, '貼文', 100, false) : ''
   if (externalPostId && accountId == null) throw bad('指定貼文前要先選帳號')

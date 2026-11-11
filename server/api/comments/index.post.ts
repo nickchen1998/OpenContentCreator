@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const boot = await loadBoot(uidOf(event))
   return processComment(boot, {
     accountId: int(body.accountId, '帳號', 1),
-    kind: body.kind === 'message' ? 'message' : 'comment',
+    kind: 'comment',
     postId: body.postId == null ? null : int(body.postId, '貼文', 1),
     postTitle: str(body.postTitle, '貼文標題', 120, false),
     externalPostId: str(body.externalPostId, '貼文', 100, false) || undefined,
