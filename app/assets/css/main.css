@@ -285,7 +285,8 @@ table.compact .bar-track { min-width: 70px; }
 }
 
 /* ---- 平台商標 ---- */
-.pf { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+/* position: relative：裡面給螢幕閱讀器的文字是 absolute，沒有定位的祖先時會以整頁為基準，在可捲動的清單裡會把整頁撐高 */
+.pf { position: relative; display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
 .pf-icon { flex: none; color: var(--brand); }
 /* 深色底（選中的膠囊）上改用文字色，品牌色會看不清楚 */
 .chip[aria-pressed="true"] .pf-icon { color: currentColor; }

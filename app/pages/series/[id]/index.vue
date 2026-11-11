@@ -111,17 +111,6 @@ const condition = computed(() => {
   return words.length ? `留言含${words.map(w => `「${w}」`).join('')}` : '還沒填關鍵字'
 })
 
-// ---- 沒命中關鍵字的留言：最能直接提高轉換的地方，可以把詞加進關鍵字 ----
-const missed = computed(() => comments.value.filter(c => !c.mine && c.status === 'unmatched' && c.reason === '留言沒有包含關鍵字'))
-async function addKeyword(c: CommentRow) {
-  const s = series.value!
-  const word = window.prompt('加入關鍵字', c.text.trim().slice(0, 12))?.trim()
-  if (!word) return
-  const keywords = [s.keywords.trim(), word].filter(Boolean).join(', ')
-  const body = { name: s.name, matchType: s.matchType, keywords, replies: s.replies, dmText: s.dmText }
-  if (await attempt(() => api(`/api/series/${id}`, { method: 'PATCH', body }), `已加入「${word}」`)) await load(true)
-}
-
 // ---- 各平台比較 ----
 const sentDm = (c: CommentRow) => !c.mine && c.status === 'sent' && Boolean(c.dmText) && !c.error
 const byPlatform = computed(() => PLATFORM_KEYS.map((key) => {
@@ -134,7 +123,9 @@ const byPlatform = computed(() => PLATFORM_KEYS.map((key) => {
 
 // ---- 名單：拿到私訊的人 ----
 const leads = computed(() => comments.value.filter(sentDm))
-const side = ref<'talk' | 'leads'>('talk')
+// 右側的分頁：全部留言、只看待回覆的、名單
+const side = ref<'talk' | 'waiting' | 'leads'>('talk')
+const waitingCount = computed(() => groupConversations(comments.value.map(c => ({ ...c }))).conversations.filter(c => c.waiting).length)
 const LEADS_PAGE = 8
 const leadPage = ref(1)
 const leadPages = computed(() => Math.max(1, Math.ceil(leads.value.length / LEADS_PAGE)))
@@ -203,7 +194,7 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
             <dt>私訊</dt><dd><span v-if="series.dmText">{{ series.dmText }}</span><span v-else class="muted">不私訊</span></dd>
           </dl>
         </section>
-        <section v-if="byPlatform.length" class="card shrink" style="gap: 6px">
+        <section v-if="byPlatform.length" class="card fill" style="gap: 6px">
           <h2>各平台</h2>
           <table class="compact">
             <thead><tr><th scope="col">平台</th><th scope="col">觀看</th><th scope="col">留言率</th><th scope="col">私訊</th></tr></thead>
@@ -214,22 +205,6 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
               </tr>
             </tbody>
           </table>
-        </section>
-        <section v-if="series.matchType === 'keyword'" class="card fill" style="gap: 6px">
-          <div class="row between">
-            <h2>沒符合條件的留言</h2>
-            <span class="small muted">{{ missed.length }} 則</span>
-          </div>
-          <div class="col divided fill scroll" style="gap: 8px">
-            <div v-for="c in missed" :key="c.id" class="row between" style="gap: 10px; flex-wrap: nowrap">
-              <span class="col" style="gap: 0; min-width: 0">
-                <span class="wrap-any" style="font-size: 14px">{{ c.text }}</span>
-                <span class="small muted pf-row" style="gap: 6px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="13" />{{ c.author }}</span>
-              </span>
-              <button type="button" class="btn sm" style="flex: none" :aria-label="`把 ${c.author} 留言裡的詞加入關鍵字`" @click="addKeyword(c)">加關鍵字</button>
-            </div>
-            <div v-if="!missed.length" class="empty">留言都有符合</div>
-          </div>
         </section>
       </div>
 
@@ -282,11 +257,12 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
         <div class="row between">
           <div class="seg" role="group" aria-label="右側內容">
             <button type="button" :aria-pressed="side === 'talk'" @click="side = 'talk'">留言紀錄</button>
+            <button type="button" :aria-pressed="side === 'waiting'" @click="side = 'waiting'">待回覆 {{ waitingCount }}</button>
             <button type="button" :aria-pressed="side === 'leads'" @click="side = 'leads'">名單 {{ leads.length }}</button>
           </div>
           <button v-if="side === 'leads' && leads.length" type="button" class="btn sm" @click="downloadLeads">下載 CSV</button>
         </div>
-        <ConversationList v-if="side === 'talk'" :rows="comments" show-platform @changed="load()" />
+        <ConversationList v-if="side !== 'leads'" :rows="comments" show-platform :waiting-only="side === 'waiting'" @changed="load()" />
         <template v-else>
           <div class="comment-log fill scroll" tabindex="0" aria-label="拿到私訊的人">
             <div v-for="c in shownLeads" :key="c.id" class="comment-item">

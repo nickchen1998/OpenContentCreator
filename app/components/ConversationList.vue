@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 對話：留言紀錄整理成一張張卡片（一個人在一則貼文底下的往來算一張），點卡片在同一個區塊裡展開成整串對話。
 // 貼文管理與系列文成效頁共用。資料有變動時發出 changed，由外面重新讀取 rows。
-const props = defineProps<{ rows: CommentRow[], showPlatform?: boolean, showParts?: boolean }>()
+// waitingOnly：只列出待回覆的對話（系列文成效頁右側的「待回覆」分頁）
+const props = defineProps<{ rows: CommentRow[], showPlatform?: boolean, showParts?: boolean, waitingOnly?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const { account } = useLookup()
 
@@ -17,7 +18,7 @@ const countIn = (index: number) => grouped.value.conversations.filter(c => c.par
 // 待回覆的排在最前面（各自仍然是最近有動靜的在前），不然會被已回覆的擠到後面幾頁
 const filtered = computed(() => {
   const list = grouped.value.conversations.filter(c => part.value < 0 || c.part === part.value)
-  return [...list.filter(c => c.waiting), ...list.filter(c => !c.waiting)]
+  return [...list.filter(c => c.waiting), ...(props.waitingOnly ? [] : list.filter(c => !c.waiting))]
 })
 const PAGE_SIZE = 8
 const page = ref(1)
@@ -28,7 +29,7 @@ function goPage(n: number) {
   page.value = Math.min(Math.max(1, n), pages.value)
   listEl.value?.scrollTo({ top: 0 })
 }
-watch(part, () => goPage(1))
+watch([part, () => props.waitingOnly], () => goPage(1))
 // 換了一則貼文（rows 整批換掉）就回到卡片清單
 watch(() => props.rows[0]?.externalPostId, () => {
   if (props.showParts) {
