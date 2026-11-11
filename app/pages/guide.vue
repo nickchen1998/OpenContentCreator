@@ -31,7 +31,7 @@ const SECTIONS = [
       '到「應用程式設定 › 基本資料」複製「應用程式編號」與「應用程式密鑰」。',
       '回到這裡的「帳號群組」，在該帳號按「連結」，貼上權杖、應用程式編號與應用程式密鑰。系統會自動換成不會到期的粉專權杖。',
     ],
-    scopes: ['pages_show_list', 'pages_manage_metadata', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_engagement', 'pages_messaging', 'read_insights'],
+    scopes: ['business_management', 'pages_show_list', 'pages_manage_metadata', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_engagement', 'pages_messaging', 'read_insights'],
   },
   {
     id: 'threads',

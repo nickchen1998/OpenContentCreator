@@ -94,7 +94,8 @@ export async function pageTokenFromUserToken(userToken: string, appId: string, a
   })
   const data = await call('facebook', String(long.access_token), '/me/accounts', { query: { fields: 'id,name,access_token', limit: '100' } })
   const pages: { id: string, name: string, access_token: string }[] = data.data ?? []
-  if (!pages.length) throw new MetaError('這個權杖沒有被授權任何粉絲專頁，產生權杖時要勾選粉專')
+  // 粉專放在商家資產管理組合底下時，沒有 business_management 權限的話 /me/accounts 會是空的
+  if (!pages.length) throw new MetaError('這個權杖看不到任何粉專。產生權杖時請加上 business_management 權限，並在授權視窗勾選你的粉專')
   const wanted = hint.trim().toLowerCase()
   const picked = pages.length === 1
     ? pages[0]!
