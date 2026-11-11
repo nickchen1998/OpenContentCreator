@@ -2,6 +2,9 @@
 // Threads（graph.threads.net）。會員用自己的 Meta App 產生 token，所以這裡只需要 token，不需要我們自己的 app id。
 export type MetaPlatform = 'instagram' | 'facebook' | 'threads'
 export const isMetaPlatform = (p: string): p is MetaPlatform => p === 'instagram' || p === 'facebook' || p === 'threads'
+/** 可以連結的平台：Meta 三個加上 YouTube（YouTube 的 API 在 server/utils/youtube.ts，token 欄位存的是 refresh token） */
+export type LinkedPlatform = MetaPlatform | 'youtube'
+export const isLinkedPlatform = (p: string): p is LinkedPlatform => isMetaPlatform(p) || p === 'youtube'
 /** 有 webhook 可用的平台。Threads 的 webhook 要通過 App Review，會員自己的 App 收不到，改用排程輪詢 */
 export const hasWebhook = (p: MetaPlatform) => p !== 'threads'
 
@@ -129,7 +132,8 @@ export function subscribe(platform: MetaPlatform, token: string, selfId: string)
 }
 
 /** 公開回覆一則留言。Threads 的回覆是「發一則 reply_to_id 指向對方的貼文」，要先建立再發布 */
-export async function replyToComment(platform: MetaPlatform, token: string, selfId: string, commentId: string, text: string) {
+export async function replyToComment(platform: LinkedPlatform, token: string, selfId: string, commentId: string, text: string) {
+  if (platform === 'youtube') return youtubeReply(token, commentId, text)
   if (platform === 'threads') {
     const container = await call(platform, token, `/${selfId}/threads`, { method: 'POST', query: { media_type: 'TEXT', text, reply_to_id: commentId } })
       .catch((e) => { throw new MetaError(`建立回覆失敗：${(e as Error).message}`) })
@@ -218,7 +222,8 @@ const num = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round
 const insightMap = (data: any) => Object.fromEntries((data?.data ?? []).map((m: any) => [m.name, num(m.values?.[0]?.value ?? m.total_value?.value)]))
 
 /** 一則貼文目前的累計成效 */
-export async function fetchMetrics(platform: MetaPlatform, token: string, postId: string): Promise<Metrics> {
+export async function fetchMetrics(platform: LinkedPlatform, token: string, postId: string): Promise<Metrics> {
+  if (platform === 'youtube') return youtubeMetrics(token, postId)
   if (platform === 'threads') {
     const m = insightMap(await call(platform, token, `/${postId}/insights`, { query: { metric: 'views,likes,replies,reposts,quotes,shares' } }))
     return { views: num(m.views), likes: num(m.likes), comments: num(m.replies), shares: num(m.reposts) + num(m.quotes) + num(m.shares), saves: 0 }
@@ -274,6 +279,7 @@ export interface RemotePostStats {
   text: string
   publishedAt: string
   /** 列表這一趟就拿得到的數字；拿不到的是 undefined，不要蓋掉資料庫裡的舊值 */
+  views?: number
   likes?: number
   comments?: number
   shares?: number
@@ -282,7 +288,9 @@ export interface RemotePostStats {
 }
 
 /** 帳號最近的貼文，連同列表本身就附帶的數字（一個請求）。觀看、分享、收藏要另外用 fetchInsights 逐則抓 */
-export async function listPostsWithStats(platform: MetaPlatform, token: string, selfId: string, limit = 25): Promise<RemotePostStats[]> {
+export async function listPostsWithStats(platform: LinkedPlatform, token: string, selfId: string, limit = 25): Promise<RemotePostStats[]> {
+  // YouTube 列影片那一趟就有觀看、按讚、留言數，不用再逐支查
+  if (platform === 'youtube') return youtubeVideos(token, selfId, limit)
   const iso = (v: unknown) => {
     const d = new Date(String(v ?? ''))
     return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()

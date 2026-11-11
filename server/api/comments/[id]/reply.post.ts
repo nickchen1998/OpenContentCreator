@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   if (!row || row.mine) throw bad('不能回覆這一則')
   if (!row.externalId) throw bad('這則是手動貼入的，沒辦法由系統送出')
   const found = await ownedConnection(uid, row.accountId)
-  if (!found || !isMetaPlatform(found.platform)) throw bad('這個帳號還沒有連結')
+  if (!found || !isLinkedPlatform(found.platform)) throw bad('這個帳號還沒有連結')
   let sent: any
   try {
     sent = await replyToComment(found.platform, await unseal(found.connection.tokenEnc), found.connection.externalId, row.externalId, text)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 公開頁面（不用登入）：Meta 等平台發佈應用程式時要求填隱私權政策網址
+// 公開頁面（不用登入）：Meta、Google 等平台發佈應用程式時要求填隱私權政策網址
 definePageMeta({ layout: false })
 </script>
 
@@ -21,15 +21,27 @@ definePageMeta({ layout: false })
       <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px">
         <li>會員的登入帳號與密碼雜湊。</li>
         <li>會員自行建立的排程、文案、素材檔案與回覆規則。</li>
-        <li>會員連結的社群帳號（Instagram、Facebook 粉絲專頁、Threads）的存取權杖與應用程式密鑰，加密後儲存。</li>
+        <li>會員連結的社群帳號（Instagram、Facebook 粉絲專頁、Threads、YouTube 頻道）的存取權杖與應用程式密鑰，加密後儲存。</li>
         <li>上述社群帳號的貼文收到的留言：留言者的公開名稱或平台識別碼、留言內容、所屬貼文，以及系統送出的回覆與私訊。</li>
-        <li>會員已發佈貼文的成效數字（觀看、按讚、留言、分享、收藏）。</li>
+        <li>會員已發佈貼文與影片的標題或文字、連結，以及成效數字（觀看、按讚、留言、分享、收藏）。</li>
       </ul>
     </section>
 
     <section class="card">
       <h2>資料怎麼使用</h2>
       <p>留言只用來比對會員自己設定的規則，並代表該會員的帳號送出他事先寫好的回覆與私訊。系統不讀取、也不處理使用者傳給該帳號的私訊。成效數字只顯示給該會員。我們不販售資料、不用於廣告，也不提供給其他會員或第三方。</p>
+    </section>
+
+    <section class="card">
+      <h2>YouTube 與 Google 帳號</h2>
+      <p>連結 YouTube 頻道時，本服務使用 YouTube API 服務（YouTube API Services），並透過 Google 的授權畫面取得你同意的權限。使用這項功能即表示你同意受 <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer">YouTube 服務條款</a>約束；Google 如何處理你的資料請見 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google 隱私權政策</a>。</p>
+      <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px">
+        <li>取得的資料：頻道的名稱與識別碼、已上傳影片的標題與公開數字（觀看、按讚、留言數），以及這些影片底下的留言（留言者的顯示名稱、頻道識別碼、留言內容與時間）。</li>
+        <li>用途：只用來顯示給該頻道的經營者，以及依他事先寫好的內容、或他手動輸入的內容，以該頻道的身分回覆留言。</li>
+        <li>我們不會存取你的 Google 帳號密碼、其他 Google 服務的資料，也不會上傳、修改或刪除你的影片。</li>
+        <li>授權憑證加密後儲存，只用於上述用途，不提供給第三方。</li>
+        <li>你可以隨時在本服務內中斷連結，或到 <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">Google 帳號的第三方存取權頁面</a>撤銷授權。中斷連結後授權憑證會立即刪除。</li>
+      </ul>
     </section>
 
     <section class="card">
@@ -44,7 +56,7 @@ definePageMeta({ layout: false })
 
     <section class="card">
       <h2>聯絡</h2>
-      <p>對這份政策或你的資料有疑問，請聯絡為你開通帳號的管理員。</p>
+      <p>對這份政策或你的資料有疑問，請聯絡為你開通帳號的管理員。另見<NuxtLink to="/terms">服務條款</NuxtLink>。</p>
     </section>
   </div>
 </template>

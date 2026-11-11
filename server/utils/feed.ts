@@ -4,7 +4,7 @@ import { accountPosts, accounts, collectionPosts, collections, comments } from '
 /** 貼文管理頁：這個會員各帳號（Threads、Instagram、Facebook）已同步的貼文、所在的系列文、有幾串對話與其中幾串還在等回覆 */
 export async function loadFeed(uid: number) {
   const db = useDb()
-  const mine = and(eq(accounts.ownerId, uid), inArray(accounts.platform, ['threads', 'instagram', 'facebook']))
+  const mine = and(eq(accounts.ownerId, uid), inArray(accounts.platform, ['threads', 'instagram', 'facebook', 'youtube']))
   const [posts, rows, series] = await db.batch([
     db.select({
       id: accountPosts.id, accountId: accountPosts.accountId, externalId: accountPosts.externalId, url: accountPosts.url, text: accountPosts.text,
@@ -47,8 +47,8 @@ export async function ownedFeedPost(uid: number, id: number) {
     .innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
     .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
     .where(and(eq(accountPosts.id, id), eq(accounts.ownerId, uid)))
-  if (!row || !isMetaPlatform(row.platform)) throw notFound('貼文')
-  return { ...row, platform: row.platform as MetaPlatform }
+  if (!row || !isLinkedPlatform(row.platform)) throw notFound('貼文')
+  return { ...row, platform: row.platform as LinkedPlatform }
 }
 
 /** 一則貼文底下記錄到的留言（新的在前） */

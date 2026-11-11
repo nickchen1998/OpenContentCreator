@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import { accountPosts, accounts, collectionPosts, comments, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
@@ -6,7 +6,7 @@ type Connection = typeof connections.$inferSelect
  * 同步一個帳號的貼文與成效：列出最近的貼文（1 個請求，按讚與留言數跟著回來），再替最久沒更新的幾則抓 insight
  * （觀看、分享、收藏；每則 1–2 個請求）。insightBudget 是這次最多替幾則貼文抓 insight，呼叫端用它控制請求數。
  */
-export async function syncAccountPosts(platform: MetaPlatform, connection: Connection, insightBudget: number, ownerId?: number) {
+export async function syncAccountPosts(platform: LinkedPlatform, connection: Connection, insightBudget: number, ownerId?: number) {
   const db = useDb()
   const now = nowIso()
   try {
@@ -20,12 +20,13 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
     const cutoff = new Date(Date.now() - 60 * 86400_000).toISOString()
     const queue = remote.filter(p => p.publishedAt >= cutoff)
       .sort((a, b) => (known.get(a.id) ?? '').localeCompare(known.get(b.id) ?? '') || b.publishedAt.localeCompare(a.publishedAt))
-      .slice(0, Math.max(0, insightBudget))
+      // YouTube 列影片時數字就齊了，不用逐支再查
+      .slice(0, platform === 'youtube' ? 0 : Math.max(0, insightBudget))
     const insights = new Map<string, Partial<Metrics>>()
     let insightError = ''
     for (const post of queue) {
       try {
-        insights.set(post.id, await fetchInsights(platform, token, post.id))
+        insights.set(post.id, await fetchInsights(platform as MetaPlatform, token, post.id))
       }
       catch (e) {
         insightError = (e as Error).message
@@ -38,13 +39,13 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
     await batchWrites(remote.map((post) => {
       const extra = insights.get(post.id)
       // 只寫這次真的拿到的數字，沒拿到的保留資料庫裡的舊值
-      const metrics = Object.fromEntries(Object.entries({ likes: post.likes, comments: post.comments, shares: post.shares, ...extra }).filter(([, v]) => v !== undefined))
-      const base = { url: post.url, text: post.text, publishedAt: post.publishedAt, ...metrics, ...(extra ? { insightsAt: now } : {}) }
+      const metrics = Object.fromEntries(Object.entries({ views: post.views, likes: post.likes, comments: post.comments, shares: post.shares, ...extra }).filter(([, v]) => v !== undefined))
+      const base = { url: post.url, text: post.text, publishedAt: post.publishedAt, ...metrics, ...(extra || post.views !== undefined ? { insightsAt: now } : {}) }
       return db.insert(accountPosts).values({ accountId: connection.accountId, externalId: post.id, ...base })
         .onConflictDoUpdate({ target: [accountPosts.accountId, accountPosts.externalId], set: base })
     }))
     // 系列文裡的貼文順便補抓既有留言（只記錄，不自動回覆）
-    const commentError = ownerId != null && platform !== 'threads' ? await importSeriesComments(platform, connection, token, ownerId) : ''
+    const commentError = ownerId != null && (platform === 'instagram' || platform === 'facebook') ? await importSeriesComments(platform, connection, token, ownerId) : ''
     const lastError = (insightError ? `讀不到觀看數等成效：${insightError}` : commentError).slice(0, 300)
     await db.update(connections).set({ lastSyncedAt: now, lastError }).where(eq(connections.id, connection.id))
     return { posts: remote.length, error: lastError }
@@ -109,7 +110,7 @@ export async function syncStaleAccounts(maxConnections = 2) {
     .limit(maxConnections)
   for (const { connection, platform, ownerId } of due) {
     // 每則貼文的 insight 1–2 個請求、補抓留言每則貼文 1 個，兩個帳號合計壓在 50 個以內
-    if (isMetaPlatform(platform)) await syncAccountPosts(platform, connection, 6, ownerId)
+    if (isLinkedPlatform(platform)) await syncAccountPosts(platform, connection, 6, ownerId)
   }
 }
 
@@ -142,13 +143,13 @@ const THREADS_PER_POLL = 6
  * 這一輪要檢查哪幾則 Threads 貼文（posts 由新到舊）：最新的 2 則每輪都看，剩下 4 個名額由「系列文裡的」與「其他的」各分一半，
  * 各自依輪次（每 5 分鐘加一）輪流；其中一邊不夠就把名額讓給另一邊。系列文裡的會自動回覆，所以輪到的機會比較多。
  */
-export function pickForPoll<T extends { inSeries: unknown }>(posts: T[], round: number): T[] {
-  if (posts.length <= THREADS_PER_POLL) return posts
+export function pickForPoll<T extends { inSeries: unknown }>(posts: T[], round: number, perPoll = THREADS_PER_POLL): T[] {
+  if (posts.length <= perPoll) return posts
   const always = posts.slice(0, 2)
   const rest = posts.slice(2)
   const series = rest.filter(p => p.inSeries != null)
   const others = rest.filter(p => p.inSeries == null)
-  const slots = THREADS_PER_POLL - always.length
+  const slots = perPoll - always.length
   const forSeries = Math.min(series.length, Math.max(slots / 2, slots - others.length))
   const rotate = (list: T[], n: number) => Array.from({ length: Math.min(n, list.length) }, (_, i) => list[(round * n + i) % list.length]!)
   return [...always, ...rotate(series, forSeries), ...rotate(others, slots - forSeries)]
@@ -156,25 +157,28 @@ export function pickForPoll<T extends { inSeries: unknown }>(posts: T[], round: 
 
 export async function pollThreads(maxConnections = 3) {
   const db = useDb()
-  const due = await db.select({ connection: connections, ownerId: accounts.ownerId }).from(connections)
+  // Threads 與 YouTube 都沒有留言的即時通知，一起在這裡輪詢
+  const due = await db.select({ connection: connections, ownerId: accounts.ownerId, platform: accounts.platform }).from(connections)
     .innerJoin(accounts, eq(accounts.id, connections.accountId))
-    .where(eq(accounts.platform, 'threads'))
+    .where(inArray(accounts.platform, ['threads', 'youtube']))
     .orderBy(sql`${connections.lastPolledAt} is not null`, asc(connections.lastPolledAt))
     .limit(maxConnections)
-  for (const { connection, ownerId } of due) {
+  for (const { connection, ownerId, platform } of due) {
     await db.update(connections).set({ lastPolledAt: nowIso() }).where(eq(connections.id, connection.id))
     try {
       // 已同步的貼文都會輪到（貼文管理頁要看得到每則的回覆），每輪最多 THREADS_PER_POLL 則（每則 1 個請求）
       const known = await db.select({ id: accountPosts.externalId, text: accountPosts.text, inSeries: collectionPosts.collectionId }).from(accountPosts)
         .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .where(eq(accountPosts.accountId, connection.accountId)).orderBy(desc(accountPosts.publishedAt)).limit(200)
-      const threads = pickForPoll(known, Math.floor(Date.now() / 300_000))
+      // YouTube 每天的額度是整個站共用的，一輪少看幾支（4 支 × 每天 288 輪 ≈ 1,150 單位）
+      const source = platform === 'youtube' ? 'youtube' : 'threads'
+      const threads = pickForPoll(known, Math.floor(Date.now() / 300_000), source === 'youtube' ? 4 : THREADS_PER_POLL)
       if (!threads.length) continue
-      const warning = await importThreadConversations(connection, ownerId, threads, 6)
+      const warning = await importThreadConversations(connection, ownerId, threads, 6, source)
       if (warning || connection.lastError) await db.update(connections).set({ lastError: warning }).where(eq(connections.id, connection.id))
     }
     catch (e) {
-      await db.update(connections).set({ lastError: `讀取 Threads 回覆失敗：${(e as Error).message}`.slice(0, 300) }).where(eq(connections.id, connection.id))
+      await db.update(connections).set({ lastError: `讀取留言失敗：${(e as Error).message}`.slice(0, 300) }).where(eq(connections.id, connection.id))
     }
   }
 }
@@ -184,7 +188,7 @@ export async function pollThreads(maxConnections = 3) {
  * 帳號自己的回覆與子文記成 own。排程輪詢與貼文管理頁「點開一則貼文」共用。
  * limit 是這次最多處理幾則別人的留言（回一則要 2 個請求、幾個 D1 查詢）。整串讀不到、只拿到第一層時回傳原因。
  */
-export async function importThreadConversations(connection: Connection, ownerId: number, threads: { id: string, text: string, inSeries: number | null }[], limit: number) {
+export async function importThreadConversations(connection: Connection, ownerId: number, threads: { id: string, text: string, inSeries: number | null }[], limit: number, source: 'threads' | 'youtube' = 'threads') {
   const db = useDb()
   const token = await unseal(connection.tokenEnc)
   // 已經收過的一次查出來，不要每則查一次（Free 方案每次 50 個 D1 查詢）
@@ -208,7 +212,8 @@ export async function importThreadConversations(connection: Connection, ownerId:
   let warning = ''
   for (const thread of threads) {
     // conversation 一次拿到整串（含回覆的回覆與自己的回覆）；讀不到就退回只看第一層，並把原因帶出去
-    const nodes = await listThreadConversation(token, thread.id).catch(async (e) => {
+    // YouTube 的影片留言走同一套流程：一支影片當成一則貼文，留言與回覆攤平成一樣的形狀
+    const nodes: (ThreadNode & { senderId?: string })[] = source === 'youtube' ? await youtubeComments(token, thread.id, connection.externalId) : await listThreadConversation(token, thread.id).catch(async (e) => {
       warning = `讀不到整串對話（只抓到第一層回覆）：${(e as Error).message}`.slice(0, 300)
       return (await listThreadReplies(token, thread.id)).map(r => ({ ...r, parentId: thread.id, mine: false })).reverse()
     })
@@ -231,9 +236,9 @@ export async function importThreadConversations(connection: Connection, ownerId:
       handled++
       boot ??= await loadBoot(ownerId)
       const top = parent === '' || parts.has(parent)
-      const incoming = { externalId: node.id, senderId: node.username, author: `@${node.username}`, text: node.text, externalPostId: thread.id }
+      const incoming = { externalId: node.id, senderId: node.senderId || node.username, author: `@${node.username}`, text: node.text, externalPostId: thread.id }
       // 對話裡的後續回覆只記錄；連結之前就在的舊留言也只記錄、不自動送出（命中系列文設定的會是「待送出」），否則一連結就會對歷史留言洗一輪
-      if (top && at > connection.createdAt) await receive(boot, 'threads', connection, { ...incoming, parentExternalId: parent })
+      if (top && at > connection.createdAt) await receive(boot, source, connection, { ...incoming, parentExternalId: parent })
       else await processComment(boot, { accountId: connection.accountId, ...incoming, at, parentExternalId: parent, nested: !top }).catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
     }
     // D1 一個 statement 最多 100 個參數，而多列 insert 每一列會把 20 個欄位全部帶上：一次最多 4 列，整批用 batch 一趟送出
@@ -257,7 +262,7 @@ export async function syncSeries(uid: number, seriesId: number) {
     .leftJoin(connections, eq(connections.accountId, accounts.id))
     .where(and(eq(collectionPosts.collectionId, seriesId), eq(accounts.ownerId, uid)))
     .orderBy(sql`${accountPosts.insightsAt} is not null`, asc(accountPosts.insightsAt))
-  const usable = rows.filter(r => r.connection && isMetaPlatform(r.platform))
+  const usable = rows.filter(r => r.connection && isLinkedPlatform(r.platform))
   const batch = usable.slice(0, 8)
   const errors = new Set<string>()
   const now = nowIso()
@@ -267,7 +272,7 @@ export async function syncSeries(uid: number, seriesId: number) {
   let synced = 0
   for (const { post, platform, connection } of batch) {
     try {
-      const m = await fetchMetrics(platform as MetaPlatform, await tokenOf(connection!), post.externalId)
+      const m = await fetchMetrics(platform as LinkedPlatform, await tokenOf(connection!), post.externalId)
       // 觀看數讀不到時（貼文類型不支援、權限不足）只更新按讚與留言，不要把原本的觀看、分享、收藏蓋成 0
       const set = m.views > 0 ? m : { likes: m.likes, comments: m.comments }
       writes.push(db.update(accountPosts).set({ ...set, insightsAt: now }).where(eq(accountPosts.id, post.id)))
@@ -284,8 +289,8 @@ export async function syncSeries(uid: number, seriesId: number) {
   for (const group of byConnection.values()) {
     const { connection, platform } = group[0]!
     try {
-      const warning = platform === 'threads'
-        ? await importThreadConversations(connection!, uid, group.map(r => ({ id: r.post.externalId, text: r.post.text, inSeries: seriesId })), 4)
+      const warning = platform === 'threads' || platform === 'youtube'
+        ? await importThreadConversations(connection!, uid, group.map(r => ({ id: r.post.externalId, text: r.post.text, inSeries: seriesId })), 4, platform)
         : await importSeriesComments(platform as 'instagram' | 'facebook', connection!, await tokenOf(connection!), uid)
       if (warning) errors.add(`${connection!.externalName}：${warning}`)
     }
