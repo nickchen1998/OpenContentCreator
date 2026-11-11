@@ -30,6 +30,7 @@ const SECTIONS = [
       '開「工具 › 圖形 API 測試工具」：Meta 應用程式選你的 App，「用戶或粉絲專頁」選「取得用戶存取權杖」，把下面列的權限都加進去，按「Generate Access Token」並勾選你的粉專。複製產生的權杖。',
       '到「應用程式設定 › 基本資料」複製「應用程式編號」與「應用程式密鑰」。',
       '回到這裡的「帳號群組」，在該帳號按「連結」，貼上權杖、應用程式編號與應用程式密鑰。系統會自動換成不會到期的粉專權杖。',
+      '到左側選單的「發佈」把應用程式發佈上線（隱私權政策網址可以填本站的 /privacy）。沒發佈的話粉專的留言與私訊不會送過來。',
     ],
     scopes: ['business_management', 'pages_show_list', 'pages_manage_metadata', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_engagement', 'pages_messaging', 'read_insights'],
   },
