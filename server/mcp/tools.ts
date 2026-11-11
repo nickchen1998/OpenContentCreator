@@ -2,8 +2,8 @@ import { and, eq, gte, inArray, lte } from 'drizzle-orm'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { posts, postTargets } from '../database/schema'
 
-/** 連進來的專案：只看得到、只能提案到被授權的群組 */
-export interface McpContext { boot: Boot, project: Project, ownerId: number }
+/** 連進來的專案：看得到所屬會員的帳號與排程，只能送提案 */
+export interface McpContext { boot: OwnedBoot, project: Project }
 
 interface Tool {
   name: string
@@ -15,26 +15,13 @@ interface Tool {
 
 const AT = { type: 'string', description: '台北時間，格式 YYYY-MM-DDTHH:MM，例如 2026-11-20T18:00' }
 const DAY = { type: 'string', description: '日期 YYYY-MM-DD（台北時間）' }
-const ACCOUNT_IDS = { type: 'array', items: { type: 'integer' }, minItems: 1, description: '帳號 id（由 list_groups 取得），必須在同一個群組裡' }
+const ACCOUNT_IDS = { type: 'array', items: { type: 'integer' }, minItems: 1, description: '帳號 id（由 list_accounts 取得）' }
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required, additionalProperties: false })
 
-const grantFor = (ctx: McpContext, groupId: number) => {
-  const grant = ctx.project.grants.find(g => g.groupId === groupId)
-  if (!grant) throw bad('這個專案沒有被授權使用這個群組')
-  return grant
-}
-const groupIds = (ctx: McpContext) => ctx.project.grants.map(g => g.groupId)
-
-/** 帳號要在同一個被授權的群組裡 */
-function resolveAccounts(ctx: McpContext, value: unknown, groupId?: number) {
+function resolveAccounts(ctx: McpContext, value: unknown) {
   const accountIds = idList(value, '帳號')
-  const all = allAccounts(ctx.boot)
-  const first = all.find(a => a.id === accountIds[0])
-  const gid = groupId ?? first?.groupId
-  if (gid == null) throw bad('找不到這個帳號')
-  grantFor(ctx, gid)
-  assertAccountsInGroup(ctx.boot, gid, accountIds)
-  return { groupId: gid, accountIds }
+  assertAccounts(ctx.boot, accountIds)
+  return accountIds
 }
 
 const describePost = (ctx: McpContext, p: Post) => ({
@@ -42,7 +29,6 @@ const describePost = (ctx: McpContext, p: Post) => ({
   title: p.title,
   scheduled_at: p.scheduledAt,
   status: p.status,
-  group_id: p.groupId,
   project: p.projectId == null ? '（站主自己排的）' : ctx.boot.projects.find(x => x.id === p.projectId)?.name ?? '（已刪除的專案）',
   mine: p.projectId === ctx.project.id,
   accounts: p.targets.map(t => ({ account_id: t.accountId, name: accountLabel(ctx.boot, t.accountId), published: Boolean(t.publishedUrl) })),
@@ -68,43 +54,30 @@ async function myPendingPost(ctx: McpContext, value: unknown) {
 
 export const TOOLS: Tool[] = [
   {
-    name: 'list_groups',
-    description: '列出這個專案被授權的帳號群組、群組內的帳號（含 account_id）、本專案在各群組的優先序，以及目前的協調規則。其他工具需要的 group_id 與 account_id 都從這裡取得。',
+    name: 'list_accounts',
+    description: '列出可以使用的社群帳號（含 account_id）、本專案的優先序，以及目前的協調規則。其他工具需要的 account_id 都從這裡取得。',
     inputSchema: obj({}),
     readOnly: true,
     run: async (_, ctx) => ({
       project: ctx.project.name,
+      my_priority: ctx.project.priority,
+      can_read_insights: ctx.project.canReadInsights,
       rules: {
         min_gap_hours: ctx.boot.rules.minGapHours,
         max_posts_per_account_per_day: ctx.boot.rules.maxPerDay,
-        note: '撞期與間隔以單一帳號計算，不同群組的帳號互不影響。所有提案都要站主確認後才會排入。時間一律是台北時間。',
+        note: '撞期與間隔以單一帳號計算。所有提案都要站主確認後才會排入。時間一律是台北時間。',
       },
-      groups: ctx.project.grants.map((grant) => {
-        const group = ctx.boot.groups.find(g => g.id === grant.groupId)!
-        return {
-          group_id: group.id,
-          name: group.name,
-          topic: group.topic,
-          my_priority: grant.priority,
-          can_read_insights: grant.canReadInsights,
-          accounts: group.accounts.map(a => ({ account_id: a.id, platform: a.platform, name: a.name })),
-        }
-      }),
+      accounts: ctx.boot.accounts.map(a => ({ account_id: a.id, platform: a.platform, name: a.name })),
     }),
   },
   {
     name: 'list_schedule',
-    description: '查詢指定期間（最長 62 天），授權群組內所有專案的排程與待確認提案。規劃發文時間前先看這個，避免跟其他專案撞期。',
-    inputSchema: obj({ from: DAY, to: DAY, group_id: { type: 'integer', description: '只看某個群組；不給就是所有被授權的群組' } }, ['from', 'to']),
+    description: '查詢指定期間（最長 62 天）所有專案的排程與待確認提案。規劃發文時間前先看這個，避免跟其他專案撞期。',
+    inputSchema: obj({ from: DAY, to: DAY }, ['from', 'to']),
     readOnly: true,
     run: async (args, ctx) => {
       const { from, to } = dayRange(args, 62)
-      const ids = args.group_id == null ? groupIds(ctx) : [grantFor(ctx, int(args.group_id, 'group_id', 1)).groupId]
-      if (!ids.length) return { posts: [] }
-      const rows = await loadPosts(ctx.boot, and(
-        inArray(posts.groupId, ids), inArray(posts.status, ['scheduled', 'pending']),
-        gte(posts.scheduledAt, `${from}T00:00`), lte(posts.scheduledAt, `${to}T23:59`),
-      ))
+      const rows = await loadPosts(ctx.boot, and(inArray(posts.status, ['scheduled', 'pending']), gte(posts.scheduledAt, `${from}T00:00`), lte(posts.scheduledAt, `${to}T23:59`)))
       return { posts: rows.map(p => describePost(ctx, p)) }
     },
   },
@@ -114,11 +87,11 @@ export const TOOLS: Tool[] = [
     inputSchema: obj({ account_ids: ACCOUNT_IDS, after: AT, count: { type: 'integer', minimum: 1, maximum: 10, description: '要幾個時段，預設 5' } }, ['account_ids', 'after']),
     readOnly: true,
     run: async (args, ctx) => {
-      const { groupId, accountIds } = resolveAccounts(ctx, args.account_ids)
+      const accountIds = resolveAccounts(ctx, args.account_ids)
       const after = scheduledAtOf(args.after)
       const slots = await loadSlots(ctx.boot, addDays(after.slice(0, 10), -1), addDays(after.slice(0, 10), 15))
       const count = args.count == null ? 5 : int(args.count, 'count', 1, 10)
-      return { open_slots: findOpenSlots({ accountIds, status: 'pending', priority: grantFor(ctx, groupId).priority }, after, slots, ctx.boot, count) }
+      return { open_slots: findOpenSlots({ accountIds, status: 'pending', priority: ctx.project.priority }, after, slots, ctx.boot, count) }
     },
   },
   {
@@ -127,31 +100,28 @@ export const TOOLS: Tool[] = [
     inputSchema: obj({ account_ids: ACCOUNT_IDS, scheduled_at: AT }, ['account_ids', 'scheduled_at']),
     readOnly: true,
     run: async (args, ctx) => {
-      const { groupId, accountIds } = resolveAccounts(ctx, args.account_ids)
+      const accountIds = resolveAccounts(ctx, args.account_ids)
       const at = scheduledAtOf(args.scheduled_at)
       const slots = await loadSlots(ctx.boot, addDays(at.slice(0, 10), -1), addDays(at.slice(0, 10), 15))
-      const candidate = { accountIds, status: 'pending' as const, priority: grantFor(ctx, groupId).priority }
+      const candidate = { accountIds, status: 'pending' as const, priority: ctx.project.priority }
       const conflicts = findConflicts({ ...candidate, at }, slots, ctx.boot)
       return { ok: !conflicts.length, conflicts, suggestions: conflicts.length ? findOpenSlots(candidate, at, slots, ctx.boot, 3) : [] }
     },
   },
   {
     name: 'get_insights',
-    description: '讀取授權群組近 N 天已發出貼文的成效摘要（各帳號的發文數、觀看、互動，以及表現最好的貼文），用來決定發文時段與題材。數字每 30 分鐘從各平台同步一次。',
-    inputSchema: obj({ days: { type: 'integer', minimum: 1, maximum: 90, description: '近幾天，預設 28' }, group_id: { type: 'integer', description: '只看某個群組' } }),
+    description: '讀取近 N 天已發出貼文的成效摘要（各帳號的發文數、觀看、互動，以及表現最好的貼文），用來決定發文時段與題材。數字每 30 分鐘從各平台同步一次。',
+    inputSchema: obj({ days: { type: 'integer', minimum: 1, maximum: 90, description: '近幾天，預設 28' } }),
     readOnly: true,
     run: async (args, ctx) => {
+      if (!ctx.project.canReadInsights) throw bad('這個專案沒有讀取成效的權限')
       const days = args.days == null ? 28 : int(args.days, 'days', 1, 90)
-      const readable = ctx.project.grants.filter(g => g.canReadInsights).map(g => g.groupId)
-      const ids = args.group_id == null ? readable : readable.filter(id => id === Number(args.group_id))
-      if (!ids.length) throw bad('這個專案沒有讀取成效的權限')
-      const ownerId = ctx.ownerId
-      const { posts: rows } = await loadInsights(ownerId, days, ids)
-      const summary = summarizeInsights(rows, { ...ctx.boot, groups: ctx.boot.groups.filter(g => ids.includes(g.id)) })
+      const { posts: rows } = await loadInsights(ctx.boot.ownerId, days)
+      const summary = summarizeInsights(rows, ctx.boot)
       return {
         days,
         totals: summary.totals,
-        accounts: summary.rows.map(r => ({ account_id: r.accountId, name: `${r.groupName}・${PLATFORMS[r.platform].label}`, posts: r.posts, views: r.views, engagement: r.engagement })),
+        accounts: summary.rows.map(r => ({ account_id: r.accountId, name: `${PLATFORMS[r.platform].label}・${r.name}`, posts: r.posts, views: r.views, engagement: r.engagement })),
         top_posts: summary.top.map(t => ({ text: t.text, url: t.url, account: accountLabel(ctx.boot, t.accountId), published_at: t.publishedAt, views: t.views, engagement: engagementOf(t) })),
       }
     },
@@ -168,10 +138,10 @@ export const TOOLS: Tool[] = [
     }, ['account_ids', 'title', 'scheduled_at']),
     readOnly: false,
     run: async (args, ctx) => {
-      const { groupId, accountIds } = resolveAccounts(ctx, args.account_ids)
+      const accountIds = resolveAccounts(ctx, args.account_ids)
       const db = useDb()
       const [row] = await db.insert(posts).values({
-        groupId, projectId: ctx.project.id, title: str(args.title, '標題', 120), scheduledAt: scheduledAtOf(args.scheduled_at),
+        ownerId: ctx.boot.ownerId, projectId: ctx.project.id, title: str(args.title, '標題', 120), scheduledAt: scheduledAtOf(args.scheduled_at),
         note: str(args.note, '備註', 2000, false), status: 'pending', source: 'mcp', createdAt: nowIso(),
       }).returning({ id: posts.id })
       await db.insert(postTargets).values(accountIds.map(accountId => ({ postId: row!.id, accountId })))

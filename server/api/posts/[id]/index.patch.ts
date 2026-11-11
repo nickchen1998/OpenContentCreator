@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
   if (Object.keys(set).length) writes.push(db.update(posts).set(set).where(eq(posts.id, id)))
   if (body.accountIds !== undefined) {
     const accountIds = idList(body.accountIds, '帳號')
-    assertAccountsInGroup(boot, post.groupId, accountIds)
+    assertAccounts(boot, accountIds)
     const current = post.targets.map(t => t.accountId)
     for (const accountId of current.filter(a => !accountIds.includes(a))) {
       writes.push(db.delete(postTargets).where(and(eq(postTargets.postId, id), eq(postTargets.accountId, accountId))))

@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
     if (!ctx) {
       // 專案屬於哪個會員，就只看得到那個會員的資料
       const boot = await loadBoot(row.ownerId!)
-      ctx = { boot, project: boot.projects.find(p => p.id === row.id)!, ownerId: row.ownerId! }
+      ctx = { boot, project: boot.projects.find(p => p.id === row.id)! }
     }
     return ctx
   }
@@ -63,7 +63,7 @@ async function handle(message: RpcRequest, context: () => Promise<McpContext>) {
         protocolVersion: PROTOCOL_VERSIONS.includes(requested) ? requested : PROTOCOL_VERSIONS[0],
         capabilities: { tools: {} },
         serverInfo: { name: 'opencontentcreator', title: 'OpenContentCreator', version: '1.0.0' },
-        instructions: 'OpenContentCreator：社群發文的排程協調。這個連線代表一個專案：先用 list_groups 看被授權的群組與帳號，用 list_schedule / find_open_slots / check_conflicts 找時段，再用 propose_post 送出提案。提案要等站主確認才會排入；系統不會代為發文。時間一律是台北時間 YYYY-MM-DDTHH:MM。',
+        instructions: 'OpenContentCreator：社群發文的排程協調。這個連線代表一個專案：先用 list_accounts 看可以使用的帳號，用 list_schedule / find_open_slots / check_conflicts 找時段，再用 propose_post 送出提案。提案要等站主確認才會排入；系統不會代為發文。時間一律是台北時間 YYYY-MM-DDTHH:MM。',
       })
     }
     case 'ping':

@@ -1,5 +1,5 @@
-// 群組、專案、協調規則：各頁共用，改動後呼叫 refreshBoot()
-export const useBoot = () => useState<Boot>('boot', () => ({ groups: [], projects: [], rules: { minGapHours: 3, maxPerDay: 2, replyPerHour: 20 } }))
+// 帳號、專案、協調規則：各頁共用，改動後呼叫 refreshBoot()
+export const useBoot = () => useState<Boot>('boot', () => ({ accounts: [], projects: [], rules: { minGapHours: 3, maxPerDay: 2, replyPerHour: 20 } }))
 export const usePendingCount = () => useState<number>('pendingCount', () => 0)
 
 /** 打 API；session 過期就回登入頁 */
@@ -25,9 +25,8 @@ export async function refreshBoot() {
 
 export function useLookup() {
   const boot = useBoot()
-  const accounts = computed(() => boot.value.groups.flatMap(g => g.accounts))
+  const accounts = computed(() => boot.value.accounts)
   const account = (id: number) => accounts.value.find(a => a.id === id)
-  const group = (id: number) => boot.value.groups.find(g => g.id === id)
   const project = (id: number | null) => boot.value.projects.find(p => p.id === id)
   const platformLabel = (accountId: number, short = false) => {
     const a = account(accountId)
@@ -35,15 +34,15 @@ export function useLookup() {
   }
   const accountLabel = (accountId: number) => {
     const a = account(accountId)
-    return a ? `${group(a.groupId)?.name ?? ''} · ${PLATFORMS[a.platform].label}` : '已刪除的帳號'
+    return a ? `${PLATFORMS[a.platform].label} · ${a.name}` : '已刪除的帳號'
   }
   const projectStyle = (id: number | null) => {
     const c = PROJECT_COLORS[project(id)?.color ?? 'gray']
     return { background: c.bg, color: c.fg }
   }
-  const projectLabel = (post: Pick<Post, 'groupId' | 'projectId'>) =>
-    `${group(post.groupId)?.name ?? ''}｜${project(post.projectId)?.name ?? '自己排的'}`
-  return { accounts, account, group, project, platformLabel, accountLabel, projectStyle, projectLabel }
+  const projectLabel = (post: Pick<Post, 'projectId'>) =>
+    project(post.projectId)?.name ?? '自己排的'
+  return { accounts, account, project, platformLabel, accountLabel, projectStyle, projectLabel }
 }
 
 const toast = () => useState<string>('toast', () => '')

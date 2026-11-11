@@ -16,7 +16,7 @@ const sections = computed(() => [
   ] },
   { label: 'Setup', items: [
     { to: '/connections', en: 'Connections', zh: 'MCP 連線與提案', badge: pending.value },
-    { to: '/groups', en: 'Groups', zh: '帳號群組' },
+    { to: '/accounts', en: 'Accounts', zh: '帳號與連結' },
     ...(me.value?.isAdmin ? [{ to: '/members', en: 'Members', zh: '會員管理' }] : []),
   ] },
 ])

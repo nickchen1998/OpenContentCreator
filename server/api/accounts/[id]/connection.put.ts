@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const accountId = idParam(event)
   const body = await bodyOf(event)
   const boot = await loadBoot(uid)
-  const account = allAccounts(boot).find(a => a.id === accountId)
+  const account = boot.accounts.find(a => a.id === accountId)
   if (!account) throw notFound('帳號')
   if (!isMetaPlatform(account.platform)) throw bad('這個平台還不能連結')
   // 已經連結的帳號可以只換 app secret（token 只顯示一次，不該為了改密鑰重新產生）

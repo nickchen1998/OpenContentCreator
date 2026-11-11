@@ -1,5 +1,5 @@
 import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm'
-import { accountPosts, accounts, comments, connections, groups } from '../database/schema'
+import { accountPosts, accounts, comments, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
 /**
@@ -87,13 +87,12 @@ export async function refreshExpiringTokens(limit = 20) {
  */
 export async function pollThreads(maxConnections = 3) {
   const db = useDb()
-  const due = await db.select({ connection: connections, ownerId: groups.ownerId }).from(connections)
-    .innerJoin(accounts, eq(accounts.id, connections.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
+  const due = await db.select({ connection: connections, ownerId: accounts.ownerId }).from(connections)
+    .innerJoin(accounts, eq(accounts.id, connections.accountId))
     .where(eq(accounts.platform, 'threads'))
     .orderBy(sql`${connections.lastPolledAt} is not null`, asc(connections.lastPolledAt))
     .limit(maxConnections)
   for (const { connection, ownerId } of due) {
-    if (ownerId == null) continue
     await db.update(connections).set({ lastPolledAt: nowIso() }).where(eq(connections.id, connection.id))
     try {
       const token = await unseal(connection.tokenEnc)
@@ -102,7 +101,7 @@ export async function pollThreads(maxConnections = 3) {
       const seen = new Set((await db.select({ externalId: comments.externalId }).from(comments)
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId)))
         .orderBy(sql`${comments.id} desc`).limit(500)).map(r => r.externalId))
-      let boot: Boot | undefined
+      let boot: OwnedBoot | undefined
       for (const thread of threads) {
         const replies = await listThreadReplies(token, thread.id)
         // 連結之前就在的舊回覆不補回，否則一連結就會對歷史留言洗一輪

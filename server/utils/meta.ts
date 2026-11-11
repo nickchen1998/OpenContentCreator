@@ -56,7 +56,7 @@ async function call<T = any>(platform: MetaPlatform, token: string, path: string
 
 /**
  * 用 token 查出它代表哪個帳號。Instagram 與粉專回傳的 id 就是 webhook 的 entry.id。
- * hint 是使用者在帳號群組填的帳號名稱：統一登入的 token 可能同時授權了好幾個 Instagram 帳號，用它挑出是哪一個。
+ * hint 是使用者登記的帳號名稱：統一登入的 token 可能同時授權了好幾個 Instagram 帳號，用它挑出是哪一個。
  */
 export async function identify(platform: MetaPlatform, token: string, hint = '') {
   if (platform === 'instagram' && isInstagramLoginToken(token)) {

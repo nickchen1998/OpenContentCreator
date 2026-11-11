@@ -19,30 +19,24 @@ export const loginFailures = sqliteTable('login_failures', {
   lastAt: integer('last_at').notNull(),
 })
 
-// 資料的擁有者只記在 groups 與 projects 上，其他表都經由群組（或專案）歸屬到會員。
-// owner_id 在資料庫是可空的（SQLite 不能對既有的表加 NOT NULL 的外鍵欄位），程式一律會填。
-const ownerId = () => integer('owner_id').references(() => users.id, { onDelete: 'cascade' })
+// 每一筆資料都直接歸屬到會員（owner_id），會員刪除時跟著刪
+const owner = () => integer('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' })
 
-// 帳號群組：一組同主題的帳號。排程、成效、回覆規則與 MCP 授權都以群組為單位
-export const groups = sqliteTable('groups', {
-  id: id(),
-  ownerId: ownerId(),
-  name: text('name').notNull(),
-  topic: text('topic').notNull().default(''),
-  createdAt: text('created_at').notNull(),
-})
-
+// 會員登記的社群帳號
 export const accounts = sqliteTable('accounts', {
   id: id(),
-  groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  ownerId: owner(),
   platform: text('platform').notNull(), // facebook | instagram | threads | youtube
   name: text('name').notNull(),
-}, t => [index('accounts_group_idx').on(t.groupId)])
+}, t => [index('accounts_owner_idx').on(t.ownerId)])
 
 // 專案：各自的 Claude 用自己的 token 透過 MCP 連進來。token 只存 sha256
 export const projects = sqliteTable('projects', {
   id: id(),
-  ownerId: ownerId(),
+  // 這一欄是較早加上的，資料庫裡可空、沒有 cascade（SQLite 不能事後補），刪會員時要自己刪專案
+  ownerId: integer('owner_id').references(() => users.id, { onDelete: 'cascade' }),
+  priority: integer('priority').notNull().default(1), // 撞期時的優先序，數字小的優先
+  canReadInsights: integer('can_read_insights', { mode: 'boolean' }).notNull().default(true),
   name: text('name').notNull(),
   color: text('color').notNull().default('blue'),
   tokenHash: text('token_hash').notNull().unique(),
@@ -50,18 +44,10 @@ export const projects = sqliteTable('projects', {
   createdAt: text('created_at').notNull(),
 })
 
-// 專案被授權的群組，以及在該群組內的優先序（數字小的優先）
-export const projectGroups = sqliteTable('project_groups', {
-  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
-  priority: integer('priority').notNull().default(1),
-  canReadInsights: integer('can_read_insights', { mode: 'boolean' }).notNull().default(true),
-}, t => [primaryKey({ columns: [t.projectId, t.groupId] })])
-
 // 一筆發文規劃（系統不代發）。status: scheduled 已規劃 | pending 待確認的提案 | rejected 已退回 | withdrawn 專案自己撤回
 export const posts = sqliteTable('posts', {
   id: id(),
-  groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  ownerId: owner(),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
   scheduledAt: text('scheduled_at').notNull(), // 台北時間 'YYYY-MM-DDTHH:MM'
@@ -69,7 +55,7 @@ export const posts = sqliteTable('posts', {
   source: text('source').notNull().default('web'), // web | mcp
   note: text('note').notNull().default(''),
   createdAt: text('created_at').notNull(),
-}, t => [index('posts_scheduled_idx').on(t.scheduledAt), index('posts_status_idx').on(t.status)])
+}, t => [index('posts_owner_idx').on(t.ownerId, t.scheduledAt), index('posts_status_idx').on(t.status)])
 
 // 這筆規劃要發到哪個帳號：各平台的文案、發文後的連結與成效
 export const postTargets = sqliteTable('post_targets', {
@@ -108,11 +94,11 @@ export const userSettings = sqliteTable('user_settings', {
   value: text('value').notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.key] })])
 
-// 固定回覆規則：掛在群組，或群組內的單一帳號、單一貼文
+// 固定回覆規則：對會員的全部帳號生效，或限定單一帳號、單一貼文
 export const replyRules = sqliteTable('reply_rules', {
   id: id(),
+  ownerId: owner(),
   name: text('name').notNull(),
-  groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
   accountId: integer('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
   postId: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
   matchType: text('match_type').notNull().default('keyword'), // keyword | any
@@ -183,3 +169,16 @@ export const accountPosts = sqliteTable('account_posts', {
   saves: integer('saves').notNull().default(0),
   insightsAt: text('insights_at'), // 上次抓 insight（觀看、分享、收藏）的時間；按讚與留言數每次同步都會更新
 }, t => [uniqueIndex('account_posts_external_idx').on(t.accountId, t.externalId), index('account_posts_published_idx').on(t.accountId, t.publishedAt)])
+
+// 系列：會員自己挑的一組貼文（可以跨帳號、跨平台），用來合併看成效。一則貼文可以在多個系列裡
+export const collections = sqliteTable('collections', {
+  id: id(),
+  ownerId: owner(),
+  name: text('name').notNull(),
+  createdAt: text('created_at').notNull(),
+}, t => [index('collections_owner_idx').on(t.ownerId)])
+
+export const collectionPosts = sqliteTable('collection_posts', {
+  collectionId: integer('collection_id').notNull().references(() => collections.id, { onDelete: 'cascade' }),
+  postId: integer('post_id').notNull().references(() => accountPosts.id, { onDelete: 'cascade' }),
+}, t => [primaryKey({ columns: [t.collectionId, t.postId] })])
