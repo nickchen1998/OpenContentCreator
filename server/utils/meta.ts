@@ -78,10 +78,45 @@ export async function identify(platform: MetaPlatform, token: string, hint = '')
     const me = await call(platform, token, '/me', { query: { fields: 'id,username' } })
     return { externalId: String(me.id), externalName: String(me.username ?? '') }
   }
-  // 粉專的 Page access token：/me 就是粉專本身。用 category 欄位確認不是個人的 User token
-  const me = await call(platform, token, '/me', { query: { fields: 'id,name,category' } })
-  if (!me.category) throw new MetaError('請貼上粉專的 Page access token，不是個人的 User token')
+  // 粉專的 Page access token：/me 就是粉專本身
+  const me = await call(platform, token, '/me', { query: { fields: 'id,name' } })
   return { externalId: String(me.id), externalName: String(me.name ?? '') }
+}
+
+/**
+ * 粉專的 token 要從「用戶權杖」換：Meta 後台 Messenger 頁的「產生」只給私訊權限，回不了留言。
+ * 做法是請會員在「圖形 API 測試工具」勾好權限拿一組用戶權杖（1–2 小時就過期），我們用 app id／secret 換成長效的，
+ * 再從 /me/accounts 取出粉專自己的 Page token（由長效用戶權杖換來的 Page token 不會到期）。
+ */
+export async function pageTokenFromUserToken(userToken: string, appId: string, appSecret: string, hint = '') {
+  const long = await call('facebook', userToken, '/oauth/access_token', {
+    query: { grant_type: 'fb_exchange_token', client_id: appId, client_secret: appSecret, fb_exchange_token: userToken },
+  })
+  const data = await call('facebook', String(long.access_token), '/me/accounts', { query: { fields: 'id,name,access_token', limit: '100' } })
+  const pages: { id: string, name: string, access_token: string }[] = data.data ?? []
+  if (!pages.length) throw new MetaError('這個權杖沒有被授權任何粉絲專頁，產生權杖時要勾選粉專')
+  const wanted = hint.trim().toLowerCase()
+  const picked = pages.length === 1
+    ? pages[0]!
+    : pages.find(p => p.id === wanted || p.name.toLowerCase() === wanted) ?? pages.find(p => wanted && p.name.toLowerCase().includes(wanted))
+  if (!picked) throw new MetaError(`這個權杖授權了多個粉專（${pages.map(p => p.name).join('、')}），請把這裡的帳號名稱改成其中一個再連結`)
+  return { token: picked.access_token, externalId: String(picked.id), externalName: picked.name }
+}
+
+/** 這個 token 是不是個人的用戶權杖（Page token 沒有 /me/accounts） */
+export const isUserToken = (token: string) => call('facebook', token, '/me/accounts', { query: { limit: '1' } }).then(() => true, () => false)
+
+/** 粉專 token 實際拿到的權限，連結時用來提醒缺了什麼 */
+export async function missingPagePermissions(token: string) {
+  const needed = ['pages_read_engagement', 'pages_manage_metadata', 'pages_manage_engagement', 'pages_read_user_content', 'pages_messaging']
+  try {
+    const data = await call('facebook', token, '/me/permissions')
+    const granted = new Set((data.data ?? []).filter((p: any) => p.status === 'granted').map((p: any) => p.permission))
+    return needed.filter(p => !granted.has(p))
+  }
+  catch {
+    return [] // Page token 查不到權限清單時不擋
+  }
 }
 
 /** 讓這個帳號的事件送到 Meta App 設定的 webhook */

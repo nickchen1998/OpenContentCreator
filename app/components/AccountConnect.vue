@@ -3,7 +3,7 @@
 const open = defineModel<boolean>({ required: true })
 const props = defineProps<{ account?: Account, connection?: ConnectionInfo, hook?: { url: string, verifyToken: string } }>()
 const emit = defineEmits<{ changed: [] }>()
-const form = reactive({ token: '', appSecret: '' })
+const form = reactive({ token: '', appId: '', appSecret: '' })
 const error = ref('')
 const warning = ref('')
 const busy = ref(false)
@@ -11,7 +11,7 @@ const needsWebhook = computed(() => props.account?.platform === 'instagram' || p
 
 watch(open, (value) => {
   if (!value) return
-  Object.assign(form, { token: '', appSecret: '' })
+  Object.assign(form, { token: '', appId: '', appSecret: '' })
   error.value = ''
   warning.value = ''
 })
@@ -63,6 +63,9 @@ async function copy(text: string) {
 
       <label class="field">Access token
         <textarea v-model="form.token" rows="3" autocomplete="off" spellcheck="false" :required="!connection" :placeholder="connection ? '留空 = 不更換' : ''" style="font-family: ui-monospace, Menlo, monospace; font-size: 13px" />
+      </label>
+      <label v-if="account.platform === 'facebook'" class="field">應用程式編號（App ID）
+        <input v-model="form.appId" type="text" inputmode="numeric" autocomplete="off" :required="!connection">
       </label>
       <label v-if="needsWebhook" class="field">{{ account.platform === 'instagram' ? 'Instagram 應用程式密鑰' : '應用程式密鑰（App secret）' }}
         <input v-model="form.appSecret" type="password" autocomplete="off" required>
