@@ -22,13 +22,6 @@ const showAccount = computed(() => new Set(accounts.value.filter(a => posts.valu
 const words = (p: { accountId: number }) => (platformOf(p) === 'threads' ? { comments: '回覆', shares: '轉發' } : { comments: '留言', shares: '分享' })
 const seriesName = (id: number | null) => series.value.find(s => s.id === id)?.name ?? ''
 const dayOf = (iso: string) => fmtAt(minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480)).replace(/（.）/, ' ')
-const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
-
-const recent = computed(() => {
-  const since = Date.now() - 28 * 86400_000
-  return totalsOf(inPlatform.value.filter(p => Date.parse(p.publishedAt) >= since))
-})
-const pendingTotal = computed(() => inPlatform.value.reduce((n, p) => n + p.pending, 0))
 
 const filtered = computed(() => inPlatform.value.filter(p => filter.value === 'all' || (filter.value === 'pending' ? p.pending > 0 : p.seriesId == null)))
 const PAGE_SIZE = 8
@@ -97,13 +90,6 @@ async function refresh() {
       <button type="button" class="chip" :aria-pressed="filter === 'pending'" @click="filter = 'pending'">有待回覆的對話</button>
       <button type="button" class="chip" :aria-pressed="filter === 'loose'" @click="filter = 'loose'">未歸入系列文</button>
     </div>
-  </div>
-
-  <div class="stats">
-    <div class="stat"><span class="small muted">近 28 天貼文</span><b>{{ fmtNum(recent.posts) }} 則</b></div>
-    <div class="stat"><span class="small muted">觀看</span><b>{{ fmtNum(recent.views) }}</b></div>
-    <div class="stat"><span class="small muted">互動率</span><b>{{ rate(recent.engagement, recent.views) }}</b></div>
-    <div class="stat"><span class="small muted">待回覆的對話</span><b>{{ fmtNum(pendingTotal) }} 串</b></div>
   </div>
 
   <div v-if="loaded && !posts.length" class="card empty">
