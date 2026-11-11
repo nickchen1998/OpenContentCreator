@@ -35,21 +35,6 @@ export interface Post {
 }
 export interface Asset { id: number, postId: number, filename: string, contentType: string, size: number, note: string }
 
-export interface ReplyRule {
-  id: number
-  name: string
-  accountId: number | null
-  postId: number | null
-  channel: 'comment' | 'message'
-  externalPostId: string
-  postLabel: string
-  matchType: 'keyword' | 'any'
-  keywords: string
-  action: 'reply' | 'reply_dm'
-  replies: string[]
-  dmText: string
-  enabled: boolean
-}
 export type CommentStatus = 'ready' | 'sent' | 'unmatched' | 'skipped' | 'handled'
 export interface CommentRow {
   id: number
@@ -64,9 +49,9 @@ export interface CommentRow {
   dmText: string
   reason: string
   status: CommentStatus
-  kind: 'comment' | 'message'
   externalId: string | null
   error: string
+  collectionId: number | null
 }
 export interface ConnectionInfo {
   accountId: number

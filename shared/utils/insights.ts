@@ -11,6 +11,8 @@ export interface InsightPost {
   comments: number
   shares: number
   saves: number
+  /** 這則貼文所屬的系列文（儀表板的貼文才有這一欄） */
+  seriesId?: number | null
 }
 
 export const engagementOf = (t: { likes: number, comments: number, shares: number }) => t.likes + t.comments + t.shares
@@ -33,7 +35,21 @@ export function summarizeInsights(posts: InsightPost[], boot: Boot) {
   return { totals, rows, top }
 }
 
-export interface Collection { id: number, name: string, posts: InsightPost[] }
+/** 系列文：一組貼文，一起看成效、共用一套留言回覆設定 */
+export interface Series {
+  id: number
+  name: string
+  matchType: 'any' | 'keyword'
+  keywords: string
+  replies: string[]
+  dmText: string
+  enabled: boolean
+  posts: InsightPost[]
+  /** 收到的留言、已回覆、私訊送出的次數 */
+  received: number
+  replied: number
+  dms: number
+}
 
 /** 一組貼文的合計 */
 export function totalsOf(posts: InsightPost[]) {

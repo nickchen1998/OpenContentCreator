@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import { and, eq } from 'drizzle-orm'
-import { accounts, assets, comments, posts, postTargets, projects, replyRules, users } from '../database/schema'
+import { accounts, assets, comments, posts, postTargets, projects, users } from '../database/schema'
 
 /** 目前登入的會員 id（由 server/middleware/auth.ts 放進來） */
 export function uidOf(event: H3Event): number {
@@ -33,11 +33,6 @@ export async function ownedTarget(uid: number, id: number) {
   const [row] = await useDb().select({ id: postTargets.id }).from(postTargets)
     .innerJoin(posts, eq(posts.id, postTargets.postId)).where(and(eq(postTargets.id, id), eq(posts.ownerId, uid)))
   if (!row) throw notFound('平台')
-}
-
-export async function ownedRule(uid: number, id: number) {
-  const [row] = await useDb().select({ id: replyRules.id }).from(replyRules).where(and(eq(replyRules.id, id), eq(replyRules.ownerId, uid)))
-  if (!row) throw notFound('規則')
 }
 
 export async function ownedComment(uid: number, id: number) {

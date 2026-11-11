@@ -107,16 +107,16 @@ async function remove() {
   if (!confirm(`刪除「${post.value!.title}」？素材與文案會一起刪除，無法復原。`)) return
   if (await attempt(() => api(`/api/posts/${id}`, { method: 'DELETE' }))) {
     refreshBoot()
-    await navigateTo({ path: '/', query: { w: mondayOf(post.value!.scheduledAt.slice(0, 10)) } })
+    await navigateTo({ path: '/schedule', query: { w: mondayOf(post.value!.scheduledAt.slice(0, 10)) } })
   }
 }
 const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected: '已退回', withdrawn: '專案已撤回' }
 </script>
 
 <template>
-  <div v-if="missing" class="empty">找不到這則貼文。<NuxtLink to="/">返回排程</NuxtLink></div>
+  <div v-if="missing" class="empty">找不到這則貼文。<NuxtLink to="/schedule">返回排程</NuxtLink></div>
   <template v-else-if="post">
-    <NuxtLink :to="{ path: '/', query: { w: mondayOf(post.scheduledAt.slice(0, 10)) } }" class="btn-text" style="align-self: flex-start; padding-left: 0">← 返回排程</NuxtLink>
+    <NuxtLink :to="{ path: '/schedule', query: { w: mondayOf(post.scheduledAt.slice(0, 10)) } }" class="btn-text" style="align-self: flex-start; padding-left: 0">← 返回排程</NuxtLink>
     <div class="row between gap-lg">
       <div class="col" style="gap: 8px">
         <h1 class="wrap-any">{{ post.title }}</h1>

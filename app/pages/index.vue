@@ -1,89 +1,137 @@
 <script setup lang="ts">
+// 儀表板：整體數字、各系列文、各帳號。逐則貼文的成效在各系列文裡看
 const boot = useBoot()
-const { projectStyle, projectLabel, platformLabel, account } = useLookup()
-const route = useRoute()
-const weekStart = ref(mondayOf(typeof route.query.w === 'string' && DAY_RE.test(route.query.w) ? route.query.w : todayTaipei()))
-const posts = ref<Post[]>([])
-const platformFilter = ref<Platform | 'all'>('all')
-const formOpen = ref(false)
-const today = todayTaipei()
+const days = ref(28)
+const posts = ref<InsightPost[]>([])
+const status = ref<{ accountId: number, lastSyncedAt: string | null, lastError: string }[]>([])
+const replies = ref({ replied: 0, dms: 0 })
+const series = ref<Series[]>([])
+const syncing = ref(false)
+const loaded = ref(false)
+const { accountLabel } = useLookup()
 
 async function load() {
-  const list = await attempt(() => api<Post[]>('/api/posts', { query: { from: weekStart.value, to: addDays(weekStart.value, 6) } }))
-  // 退回與撤回的提案不放在週曆上
-  if (list) posts.value = list.filter(p => p.status === 'scheduled' || p.status === 'pending')
+  const [data, list] = await Promise.all([
+    attempt(() => api<{ posts: InsightPost[], status: typeof status.value, replies: typeof replies.value }>('/api/insights', { query: { days: days.value } })),
+    attempt(() => api<Series[]>('/api/series')),
+  ])
+  if (data) {
+    posts.value = data.posts
+    status.value = data.status
+    replies.value = data.replies
+  }
+  series.value = list ?? []
+  loaded.value = true
 }
-watch(weekStart, (w) => {
-  navigateTo({ query: { w } }, { replace: true })
-  load()
-}, { immediate: true })
+watch(days, load, { immediate: true })
 
-const kind = (p: Post) => (p.conflicts.length ? 'conflict' : p.status === 'pending' ? 'pending' : 'ok')
-const KIND_LABEL = { ok: '已規劃', pending: '待確認', conflict: '時段衝突' }
-const shown = computed(() => posts.value.filter(p =>
-  platformFilter.value === 'all' || p.targets.some(t => account(t.accountId)?.platform === platformFilter.value)))
-const days = computed(() => WEEKDAYS.map((name, i) => {
-  const day = addDays(weekStart.value, i)
-  return { day, label: `週${name}`, date: fmtDay(day), posts: shown.value.filter(p => p.scheduledAt.startsWith(day)) }
-}))
-const count = (k: string) => shown.value.filter(p => kind(p) === k).length
-const usedPlatforms = computed(() => PLATFORM_KEYS.filter(k => boot.value.accounts.some(a => a.platform === k)))
-
-function saved() {
-  load()
-  refreshBoot()
+async function sync() {
+  syncing.value = true
+  const data = await attempt(() => api<{ errors: string[] }>('/api/insights/sync', { method: 'POST' }))
+  syncing.value = false
+  if (!data) return
+  notify(data.errors[0] ?? '已更新')
+  await load()
 }
+
+const summary = computed(() => summarizeInsights(posts.value, boot.value))
+const connected = computed(() => status.value.length > 0)
+const errors = computed(() => status.value.filter(s => s.lastError))
+const lastSynced = computed(() => {
+  const latest = status.value.map(s => s.lastSyncedAt).filter(Boolean).sort().at(-1)
+  return latest ? minutesToAt(Math.floor(Date.parse(latest) / 60000) + 480).replace('T', ' ').slice(5) : ''
+})
+const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
+// 系列文的數字是裡面所有貼文的累計；最下面一列是這段期間沒有歸入任何系列文的貼文
+const rows = computed(() => series.value.map(s => ({ ...s, totals: totalsOf(s.posts), platforms: [...new Set(s.posts.map(p => accountLabel(p.accountId).split(' · ')[0]))].join('、') })))
+const loose = computed(() => totalsOf(posts.value.filter(p => p.seriesId == null)))
+const maxViews = computed(() => Math.max(1, loose.value.views, ...rows.value.map(r => r.totals.views)))
+const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(views / maxViews.value * 100))}%` })
 </script>
 
 <template>
-  <div class="row between gap-lg">
-    <h2>{{ weekStart.slice(0, 4) }}/{{ fmtDayFull(weekStart) }}– {{ fmtDayFull(addDays(weekStart, 6)) }}</h2>
-    <div class="row">
-      <button type="button" class="btn" @click="weekStart = addDays(weekStart, -7)">上一週</button>
-      <button type="button" class="btn" :disabled="weekStart === mondayOf(today)" @click="weekStart = mondayOf(today)">本週</button>
-      <button type="button" class="btn" @click="weekStart = addDays(weekStart, 7)">下一週</button>
-      <button type="button" class="btn primary" @click="formOpen = true">新增規劃</button>
-    </div>
-  </div>
-
-  <div class="stats" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
-    <div class="stat"><span class="small muted">已規劃</span><b>{{ count('ok') }} 則</b></div>
-    <div class="stat"><span class="small muted">待確認</span><b>{{ count('pending') }} 則</b></div>
-    <div class="stat"><span class="small muted">時段衝突</span><b :style="count('conflict') ? 'color: var(--danger)' : ''">{{ count('conflict') }} 則</b></div>
-  </div>
-
-  <div class="row between gap-lg">
-    <div class="row" role="group" aria-label="平台篩選">
-      <button type="button" class="chip" :aria-pressed="platformFilter === 'all'" @click="platformFilter = 'all'">全部平台</button>
-      <button v-for="k in usedPlatforms" :key="k" type="button" class="chip" :aria-pressed="platformFilter === k" @click="platformFilter = k">{{ PLATFORMS[k].short }}</button>
+  <div class="row between">
+    <div class="row" role="group" aria-label="期間">
+      <button type="button" class="chip" :aria-pressed="days === 7" @click="days = 7">近 7 天</button>
+      <button type="button" class="chip" :aria-pressed="days === 28" @click="days = 28">近 28 天</button>
+      <button type="button" class="chip" :aria-pressed="days === 90" @click="days = 90">近 90 天</button>
     </div>
     <div class="row">
-      <span v-for="p in boot.projects" :key="p.id" class="tag lg" :style="projectStyle(p.id)">{{ p.name }}</span>
+      <span v-if="lastSynced" class="small muted">更新於 {{ lastSynced }}</span>
+      <button type="button" class="btn" :disabled="syncing || !connected" @click="sync">{{ syncing ? '同步中…' : '立即同步' }}</button>
     </div>
   </div>
 
-  <div class="week-scroll">
-    <div class="week">
-      <section v-for="d in days" :key="d.day" class="day" :class="{ today: d.day === today }" :aria-label="`${d.label} ${d.date}`">
-        <div class="row between" style="align-items: baseline">
-          <div class="day-name">{{ d.label }}</div>
-          <div class="small muted">{{ d.date }}</div>
-        </div>
-        <article v-for="p in d.posts" :key="p.id" class="post" :class="kind(p)">
-          <div class="row between" style="gap: 6px">
-            <span class="bold" style="font-size: 13.5px">{{ p.scheduledAt.slice(11) }}</span>
-            <span class="small" :class="`status-${kind(p)}`" style="font-size: 12px">{{ KIND_LABEL[kind(p)] }}</span>
-          </div>
-          <NuxtLink :to="`/posts/${p.id}`" class="title">{{ p.title }}</NuxtLink>
-          <div class="row" style="gap: 4px">
-            <span v-for="t in p.targets" :key="t.id" class="pl">{{ platformLabel(t.accountId, true) }}{{ t.publishedUrl ? ' ✓' : '' }}</span>
-          </div>
-          <span class="tag" style="align-self: flex-start" :style="projectStyle(p.projectId)">{{ projectLabel(p) }}</span>
-        </article>
-      </section>
-    </div>
+  <div v-if="loaded && !connected" class="card empty">
+    還沒有連結帳號　<NuxtLink to="/accounts">前往連結</NuxtLink>
+  </div>
+  <div v-for="e in errors" :key="e.accountId" class="card" style="background: var(--danger-bg); border-color: var(--danger)" role="alert">
+    <span class="small"><b>{{ accountLabel(e.accountId) }}</b>　{{ e.lastError }}</span>
   </div>
 
+  <div class="stats">
+    <div class="stat"><span class="small muted">總觀看</span><b>{{ fmtNum(summary.totals.views) }}</b></div>
+    <div class="stat"><span class="small muted">總互動</span><b>{{ fmtNum(summary.totals.engagement) }}</b></div>
+    <div class="stat"><span class="small muted">平均互動率</span><b>{{ rate(summary.totals.engagement, summary.totals.views) }}</b></div>
+    <div class="stat"><span class="small muted">自動回覆</span><b>{{ fmtNum(replies.replied) }} 則</b></div>
+    <div class="stat"><span class="small muted">私訊送出</span><b>{{ fmtNum(replies.dms) }} 則</b></div>
+  </div>
 
-  <PostForm v-model="formOpen" :default-day="weekStart <= today && today <= addDays(weekStart, 6) ? today : weekStart" @saved="saved" />
+  <section class="card">
+    <div class="row between">
+      <h2>系列文</h2>
+      <NuxtLink to="/series" class="btn">管理系列文</NuxtLink>
+    </div>
+    <div class="table-scroll">
+      <table style="min-width: 760px">
+        <thead>
+          <tr><th scope="col">系列文</th><th scope="col">貼文</th><th scope="col">觀看</th><th scope="col">觀看占比</th><th scope="col">互動率</th><th scope="col">留言</th><th scope="col">私訊送出</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in rows" :key="s.id">
+            <th scope="row">
+              <NuxtLink :to="`/series/${s.id}`" style="color: var(--ink)">{{ s.name }}</NuxtLink>
+              <div class="small muted" style="font-weight: 400">{{ s.platforms || '還沒有貼文' }}</div>
+            </th>
+            <td>{{ s.posts.length }} 則</td>
+            <td>{{ fmtNum(s.totals.views) }}</td>
+            <td><div class="bar-track" aria-hidden="true"><div class="bar" :style="bar(s.totals.views)" /></div></td>
+            <td>{{ rate(s.totals.engagement, s.totals.views) }}</td>
+            <td>{{ fmtNum(s.received) }}</td>
+            <td>{{ s.dmText ? `${fmtNum(s.dms)} 則` : '未設定' }}</td>
+          </tr>
+          <tr style="color: var(--muted)">
+            <th scope="row" style="font-weight: 400">未歸入系列文的貼文<div class="small">近 {{ days }} 天</div></th>
+            <td>{{ loose.posts }} 則</td>
+            <td>{{ fmtNum(loose.views) }}</td>
+            <td><div class="bar-track" aria-hidden="true"><div class="bar" :style="{ ...bar(loose.views), background: 'var(--line-strong)' }" /></div></td>
+            <td>{{ rate(loose.engagement, loose.views) }}</td>
+            <td>—</td>
+            <td>不回覆</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>各帳號</h2>
+    <div class="table-scroll">
+      <table style="min-width: 640px">
+        <thead>
+          <tr><th scope="col">帳號</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動</th><th scope="col">互動率</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in summary.rows" :key="r.accountId">
+            <th scope="row">{{ PLATFORMS[r.platform].label }}<div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
+            <td>{{ r.posts }}</td>
+            <td>{{ fmtNum(r.views) }}</td>
+            <td>{{ fmtNum(r.engagement) }}</td>
+            <td>{{ rate(r.engagement, r.views) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="!summary.rows.length" class="empty">還沒有帳號</div>
+  </section>
 </template>

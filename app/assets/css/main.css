@@ -204,3 +204,7 @@ dialog form { padding: 24px 26px; display: flex; flex-direction: column; gap: 14
 @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .fade-in { animation: fade-in 0.25s ease; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* 整張可以點的卡片（系列文清單） */
+a.card.card-link { color: var(--ink); text-decoration: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+a.card.card-link:hover { border-color: var(--green-deep); text-decoration: none; box-shadow: 0 4px 18px rgba(46, 54, 47, 0.1); }
