@@ -183,6 +183,18 @@ export const accountStats = sqliteTable('account_stats', {
   followers: integer('followers').notNull(),
 }, t => [primaryKey({ columns: [t.accountId, t.day] })])
 
+// 貼文成效的每日紀錄：平台只給累計的現值，所以同步到新數字時把那一則當天的數字記下來（一天一筆，同一天重複同步就蓋掉）。
+// 數字是「到那天為止的累計」；沒同步到的日子沒有紀錄，要用時取「那天或更早的最後一筆」，不要內插。
+export const postStats = sqliteTable('post_stats', {
+  postId: integer('post_id').notNull().references(() => accountPosts.id, { onDelete: 'cascade' }),
+  day: text('day').notNull(), // 台北時間的 YYYY-MM-DD
+  views: integer('views').notNull().default(0),
+  likes: integer('likes').notNull().default(0),
+  comments: integer('comments').notNull().default(0),
+  shares: integer('shares').notNull().default(0),
+  saves: integer('saves').notNull().default(0),
+}, t => [primaryKey({ columns: [t.postId, t.day] })])
+
 // 公開頁面：每個會員一頁對外的介紹頁（/p/<slug>），不用登入就能看。
 // draft 是編輯中的設定，按發布時複製到 live；對外只讀 live，而且 published 要是 true。
 // 設定是 JSON（形狀見 shared/utils/page.ts 的 PageConfig），頭像與背景圖的 R2 key 另外存

@@ -36,14 +36,16 @@ export async function syncAccountPosts(platform: LinkedPlatform, connection: Con
     }
     // 先前把轉發、或還沒公開的影片收進來的，清掉（留言紀錄不受影響）
     if (reposts.length) await db.delete(accountPosts).where(and(eq(accountPosts.accountId, connection.accountId), sql`${accountPosts.externalId} in (select value from json_each(${JSON.stringify(reposts)}))`))
-    await batchWrites(remote.map((post) => {
+    await batchWrites([...remote.map((post) => {
       const extra = insights.get(post.id)
       // 只寫這次真的拿到的數字，沒拿到的保留資料庫裡的舊值
       const metrics = Object.fromEntries(Object.entries({ views: post.views, likes: post.likes, comments: post.comments, shares: post.shares, ...extra }).filter(([, v]) => v !== undefined))
       const base = { url: post.url, text: post.text, publishedAt: post.publishedAt, ...metrics, ...(extra || post.views !== undefined ? { insightsAt: now } : {}) }
       return db.insert(accountPosts).values({ accountId: connection.accountId, externalId: post.id, ...base })
         .onConflictDoUpdate({ target: [accountPosts.accountId, accountPosts.externalId], set: base })
-    }))
+    }),
+    // 這次列到的貼文，把更新完的數字記成今天的一筆（成長趨勢用）
+    ...(remote.length ? [snapshotPostStats(sql`${accountPosts.accountId} = ${connection.accountId} and ${accountPosts.externalId} in (select value from json_each(${JSON.stringify(remote.map(p => p.id))}))`)] : [])])
     // 粉絲數一天記一次（今天記過就不會再打平台）
     const followerError = await recordFollowers(platform, connection, token).catch(e => `讀不到粉絲數：${(e as Error).message}`)
     // 系列文裡的貼文順便補抓既有留言（只記錄，不自動回覆）
@@ -272,18 +274,21 @@ export async function syncSeries(uid: number, seriesId: number) {
   const tokens = new Map<number, string>()
   const tokenOf = async (c: Connection) => tokens.get(c.id) ?? tokens.set(c.id, await unseal(c.tokenEnc)).get(c.id)!
   let synced = 0
+  const refreshed: number[] = []
   for (const { post, platform, connection } of batch) {
     try {
       const m = await fetchMetrics(platform as LinkedPlatform, await tokenOf(connection!), post.externalId)
       // 觀看數讀不到時（貼文類型不支援、權限不足）只更新按讚與留言，不要把原本的觀看、分享、收藏蓋成 0
       const set = m.views > 0 ? m : { likes: m.likes, comments: m.comments }
       writes.push(db.update(accountPosts).set({ ...set, insightsAt: now }).where(eq(accountPosts.id, post.id)))
+      refreshed.push(post.id)
       synced++
     }
     catch (e) {
       errors.add(`${connection!.externalName}：讀不到成效數字：${(e as Error).message}`)
     }
   }
+  if (refreshed.length) writes.push(snapshotPostStats(inIdList(accountPosts.id, refreshed)))
   await batchWrites(writes)
   // 留言：同一個帳號的貼文一起處理
   const byConnection = new Map<number, typeof batch>()
