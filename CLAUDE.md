@@ -52,7 +52,8 @@
   分頁在背景時暫停。不做 SSE：Worker 的請求之間沒辦法互相通知，要真推送得加 Durable Object（使用者同意先用輪詢）。
   新增會影響畫面的資料時，記得讓 `/api/changes` 的指紋跟著變。
 - 圖表用 Chart.js，包在 `app/components/BarChart.vue`（只註冊長條圖用到的部分）。互動組成的四個顏色用 dataviz 的
-  `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。每組圖表下面留一個「資料表」。
+  `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。系列文成效頁的橫條圖最多畫 8 條：
+  貼文更多時只畫觀看最高的 7 則，其餘合併成「其他 N 則」（每一則的數字在資料表）；標籤是平台縮寫＋日期＋開頭幾個字。每組圖表下面留一個「資料表」。
 - **留言紀錄是「對話」**：`comments.parent_external_id` 記它回覆哪一則、`comments.mine` 記是不是帳號自己發的（送出的回覆、在平台上自己回的、
   Threads 的子文；status 一律是 `own`，**算留言數時要排除**）。`shared/utils/conversations.ts` 的 `groupConversations` 把紀錄組成對話與子文串，
   網頁（`ConversationList`：卡片 → 在同一個區塊內展開整串，貼文管理與系列文成效頁共用，不開新頁）與伺服器共用。
