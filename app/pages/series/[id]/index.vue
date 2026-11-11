@@ -6,6 +6,7 @@ const series = ref<Series>()
 const comments = ref<CommentRow[]>([])
 const missing = ref(false)
 const settingsOpen = ref(false)
+const waitingOnly = ref(false)
 const backToList = () => navigateTo('/series')
 
 async function load() {
@@ -126,8 +127,11 @@ const partsSummary = computed(() => `各貼文互動組成：${(series.value?.po
       </section>
 
       <section class="card">
-        <h2>留言紀錄</h2>
-        <ConversationList :rows="comments" show-platform @changed="load" />
+        <div class="row between">
+          <h2>留言紀錄</h2>
+          <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
+        </div>
+        <ConversationList :rows="comments" show-platform :waiting-only="waitingOnly" @changed="load" />
       </section>
     </div>
 

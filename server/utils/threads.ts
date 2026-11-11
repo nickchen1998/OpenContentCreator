@@ -40,8 +40,9 @@ export async function loadThreads(uid: number) {
 
 /** 這則 Threads 貼文是不是這個會員的；不是就當成不存在 */
 export async function ownedThread(uid: number, id: number) {
-  const [row] = await useDb().select({ id: accountPosts.id, accountId: accountPosts.accountId, externalId: accountPosts.externalId }).from(accountPosts)
+  const [row] = await useDb().select({ id: accountPosts.id, accountId: accountPosts.accountId, externalId: accountPosts.externalId, text: accountPosts.text, seriesId: collectionPosts.collectionId }).from(accountPosts)
     .innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
+    .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
     .where(and(eq(accountPosts.id, id), eq(accounts.ownerId, uid), eq(accounts.platform, 'threads')))
   if (!row) throw notFound('貼文')
   return row
