@@ -6,7 +6,6 @@ const series = ref<Series>()
 const comments = ref<CommentRow[]>([])
 const missing = ref(false)
 const settingsOpen = ref(false)
-const waitingOnly = ref(false)
 const syncing = ref(false)
 // 只同步這個系列文裡的貼文（成效數字與留言）。一次最多 8 則，貼文更多時會提示再按一次
 async function sync() {
@@ -142,11 +141,8 @@ const partsSummary = computed(() => `各貼文互動組成：${(series.value?.po
       </section>
 
       <section class="card">
-        <div class="row between">
-          <h2>留言紀錄</h2>
-          <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
-        </div>
-        <ConversationList :rows="comments" show-platform :waiting-only="waitingOnly" @changed="load()" />
+        <h2>留言紀錄</h2>
+        <ConversationList :rows="comments" show-platform @changed="load()" />
       </section>
     </div>
 
