@@ -14,6 +14,7 @@ const sections = computed(() => [
     { to: '/series', en: 'Series', zh: '系列文管理' },
     { to: '/feed', en: 'Posts', zh: '貼文管理' },
     { to: '/schedule', en: 'Schedule', zh: '排程週曆' },
+    { to: '/page', en: 'Page', zh: '公開頁面' },
   ] },
   { label: 'Setup', items: [
     { to: '/accounts', en: 'Accounts', zh: '帳號與連結' },

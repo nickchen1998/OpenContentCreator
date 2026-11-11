@@ -182,3 +182,21 @@ export const accountStats = sqliteTable('account_stats', {
   day: text('day').notNull(), // 台北時間的 YYYY-MM-DD
   followers: integer('followers').notNull(),
 }, t => [primaryKey({ columns: [t.accountId, t.day] })])
+
+// 公開頁面：每個會員一頁對外的介紹頁（/p/<slug>），不用登入就能看。
+// draft 是編輯中的設定，按發布時複製到 live；對外只讀 live，而且 published 要是 true。
+// 設定是 JSON（形狀見 shared/utils/page.ts 的 PageConfig），頭像與背景圖的 R2 key 另外存
+export const publicPages = sqliteTable('public_pages', {
+  ownerId: integer('owner_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  slug: text('slug').notNull().unique(),
+  published: integer('published', { mode: 'boolean' }).notNull().default(false),
+  draft: text('draft').notNull(),
+  live: text('live'),
+  // 圖片也分草稿與已發布兩份：換了頭像還沒發布時，對外看到的仍是舊的
+  draftAvatarKey: text('draft_avatar_key').notNull().default(''),
+  draftCoverKey: text('draft_cover_key').notNull().default(''),
+  liveAvatarKey: text('live_avatar_key').notNull().default(''),
+  liveCoverKey: text('live_cover_key').notNull().default(''),
+  updatedAt: text('updated_at').notNull(),
+  publishedAt: text('published_at'),
+})

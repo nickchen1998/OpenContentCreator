@@ -347,3 +347,16 @@ table.compact .bar-track { min-width: 70px; }
 .heat-wrap { flex: 1 1 auto; min-height: 120px; }
 .heat { display: grid; grid-template-columns: 28px repeat(7, minmax(0, 1fr)); grid-template-rows: auto repeat(3, minmax(20px, 1fr)); gap: 4px; align-items: center; flex: 1 1 auto; min-height: 0; }
 .heat-cell { height: 100%; min-height: 20px; border-radius: 6px; }
+
+/* ---- 公開頁面的編輯畫面 ---- */
+.swatch { width: 36px; height: 36px; border-radius: 12px; border: 3px solid #fff; box-shadow: 0 0 0 1px var(--line-strong); cursor: pointer; padding: 0; }
+.swatch.round { border-radius: 50%; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--green-deep); }
+.swatch-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.color-input { width: 44px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; }
+.preview-stage { display: flex; justify-content: center; background: var(--chip-bg); border-radius: var(--radius-field); padding: 12px; min-height: 0; overflow: hidden; }
+.preview-frame { width: 100%; height: 100%; border-radius: 18px; border: 1px solid var(--line); overflow-y: auto; background: #fff; }
+.preview-frame.phone { max-width: 390px; }
+@media not ((min-width: 1024px) and (min-height: 640px)) {
+  .preview-frame { height: 640px; }
+}

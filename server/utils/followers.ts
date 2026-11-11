@@ -12,25 +12,29 @@ export async function fetchFollowers(platform: LinkedPlatform, token: string, se
   if (platform === 'youtube') return youtubeSubscribers(token, selfId)
   if (platform === 'threads') {
     const data = await metaGet(platform, token, `/${selfId}/threads_insights`, { metric: 'followers_count' })
-    return count(data?.data?.[0]?.total_value?.value)
+    const metric = (data?.data ?? []).find((m: any) => m?.name === 'followers_count') ?? data?.data?.[0]
+    // 文件說是 total_value；有些回應把數字放在 values 裡，兩種都接
+    return count(metric?.total_value?.value ?? metric?.values?.at?.(-1)?.value)
   }
   const data = await metaGet(platform, token, `/${selfId}`, { fields: platform === 'instagram' ? 'followers_count' : 'followers_count,fan_count' })
   return count(data?.followers_count ?? data?.fan_count)
 }
 
 /**
- * 今天還沒記過就抓一次並記下來（一個帳號一天只打一次平台）。抓不到不算錯，也不影響同步的其他部分。
+ * 今天還沒記過就抓一次並記下來（一個帳號一天只打一次平台）。不影響同步的其他部分；
+ * 抓不到時回傳原因（會顯示在同步結果與連結狀態上，不然只會看到一欄空白、不知道為什麼）。
  */
 export async function recordFollowers(platform: LinkedPlatform, connection: Connection, token: string) {
   const db = useDb()
   const day = todayTaipei()
   const [seen] = await db.select({ day: accountStats.day }).from(accountStats)
     .where(and(eq(accountStats.accountId, connection.accountId), eq(accountStats.day, day)))
-  if (seen) return
-  const followers = await fetchFollowers(platform, token, connection.externalId).catch(() => null)
-  if (followers == null) return
+  if (seen) return ''
+  const followers = await fetchFollowers(platform, token, connection.externalId)
+  if (followers == null) return platform === 'youtube' ? '讀不到訂閱數：頻道把訂閱人數設成隱藏' : '讀不到粉絲數：平台沒有回傳數字'
   await db.insert(accountStats).values({ accountId: connection.accountId, day, followers })
     .onConflictDoUpdate({ target: [accountStats.accountId, accountStats.day], set: { followers } })
+  return ''
 }
 
 /**
