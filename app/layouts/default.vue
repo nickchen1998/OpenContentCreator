@@ -19,7 +19,7 @@ async function logout() {
 <template>
   <div class="shell">
     <aside class="side">
-      <div class="brand">OpenContentCreator</div>
+      <NuxtLink to="/" class="brand"><img src="/logo.png" alt="" width="28" height="28"><span>OpenContentCreator</span></NuxtLink>
       <nav aria-label="主選單">
         <NuxtLink to="/" :class="{ 'router-link-active': $route.path.startsWith('/posts') }">排程</NuxtLink>
         <NuxtLink to="/insights">成效</NuxtLink>

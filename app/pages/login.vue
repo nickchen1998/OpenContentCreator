@@ -23,7 +23,10 @@ async function submit() {
 <template>
   <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px">
     <form class="card" style="width: min(380px, 100%); padding: 28px; gap: 18px" @submit.prevent="submit">
-      <h1 style="font-size: 22px">OpenContentCreator</h1>
+      <div class="col" style="align-items: center; gap: 12px">
+        <img src="/logo.png" alt="" width="72" height="72">
+        <h1 style="font-size: 22px">OpenContentCreator</h1>
+      </div>
       <label class="field">密碼
         <input v-model="password" type="password" autocomplete="current-password" required autofocus>
       </label>
