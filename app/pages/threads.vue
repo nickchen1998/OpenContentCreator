@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 串文管理：Threads 發得多，大部分不屬於任何系列文。左邊看每則貼文的成效，右邊看回覆、手動回一句，或把貼文放進系列文
+// 串文管理：Threads 發得多，大部分不屬於任何系列文。左邊看每則貼文的成效，右邊看回覆、手動回一句。貼文歸在哪個系列文只顯示，要改到系列文管理去改
 type ThreadPost = InsightPost & { seriesId: number | null, received: number, pending: number, parts: number }
 const { accounts } = useLookup()
 const posts = ref<ThreadPost[]>([])
@@ -79,12 +79,6 @@ async function sync() {
   await load()
   if (selectedId.value) await pick(selectedId.value)
 }
-async function setSeries(value: string) {
-  const post = selected.value
-  if (!post) return
-  const seriesId = value ? Number(value) : null
-  if (await attempt(() => api(`/api/threads/${post.id}/series`, { method: 'PUT', body: { seriesId } }), '已儲存')) post.seriesId = seriesId
-}
 </script>
 
 <template>
@@ -151,13 +145,13 @@ async function setSeries(value: string) {
           <span v-if="fetching" aria-live="polite">更新中…</span>
         </div>
       </div>
-      <div class="thread-series">
-        <label for="thread-series-pick" class="small bold">系列文</label>
-        <select id="thread-series-pick" :value="selected.seriesId ?? ''" @change="setSeries(($event.target as HTMLSelectElement).value)">
-          <option value="">不加入</option>
-          <option v-for="s in series" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-      <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
+      <div class="row between">
+        <span class="small">
+          <span class="muted">系列文　</span>
+          <NuxtLink v-if="selected.seriesId" :to="`/series/${selected.seriesId}`" class="bold">{{ seriesName(selected.seriesId) }}</NuxtLink>
+          <span v-else class="muted">未歸入</span>
+        </span>
+        <button type="button" class="chip" :aria-pressed="waitingOnly" @click="waitingOnly = !waitingOnly">只看待回覆</button>
       </div>
 
       <ConversationList :rows="replies" show-parts :waiting-only="waitingOnly" @changed="refresh" />

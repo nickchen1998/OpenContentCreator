@@ -11,7 +11,9 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
   const now = nowIso()
   try {
     const token = await unseal(connection.tokenEnc)
-    const remote = await listPostsWithStats(platform, token, connection.externalId)
+    const listed = await listPostsWithStats(platform, token, connection.externalId)
+    const remote = listed.filter(p => !p.repost)
+    const reposts = listed.filter(p => p.repost).map(p => p.id)
     const known = new Map((await db.select({ externalId: accountPosts.externalId, insightsAt: accountPosts.insightsAt }).from(accountPosts)
       .where(eq(accountPosts.accountId, connection.accountId))).map(r => [r.externalId, r.insightsAt]))
     // 新貼文數字變動快，先抓還沒抓過的，再抓最久沒更新的；兩個月前的貼文不再更新 insight
@@ -31,6 +33,8 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
         if (/permission|\(#10\)|\(#200\)/i.test(insightError)) break
       }
     }
+    // 先前把轉發當成自己的貼文收進來的，清掉（留言紀錄不受影響）
+    if (reposts.length) await db.delete(accountPosts).where(and(eq(accountPosts.accountId, connection.accountId), sql`${accountPosts.externalId} in (select value from json_each(${JSON.stringify(reposts)}))`))
     await batchWrites(remote.map((post) => {
       const extra = insights.get(post.id)
       // 只寫這次真的拿到的數字，沒拿到的保留資料庫裡的舊值

@@ -69,7 +69,7 @@
 - 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
   驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
 - **串文管理（`/threads`）是 Threads 專用的頁面**：Threads 發得多、大部分不屬於任何系列文，所以 Threads 是唯一「不在系列文裡也記錄留言」的平台
-  （記成未回覆、不自動回，由會員在這一頁手動回或按「不用回」）；自動回覆仍然只跟著系列文。頁面上可以直接把貼文放進／移出系列文。
+  （記成未回覆、不自動回，由會員在這一頁手動回或按「不用回」）；自動回覆仍然只跟著系列文。頁面上只顯示貼文歸在哪個系列文，**不提供設定**（使用者的決定）；要改到系列文管理去改。
   不要給 Threads 加「所有貼文都自動回」的帳號層級規則。
 - Threads 輪詢用 conversation 端點一次拿整串（含回覆的回覆、自己的回覆、子文；讀不到會退回只看第一層），會輪到所有已同步的貼文（最新 2 則每輪都看，其餘名額系列文與非系列文各半輪流，`pickForPoll`）；連結之前的舊回覆只記錄、不自動送出。回覆是先建 container 再發布，
   太快發布會回「The requested resource does not exist」，`replyToComment` 會等幾秒重試。
