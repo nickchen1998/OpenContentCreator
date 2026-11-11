@@ -7,7 +7,7 @@ const { accounts, accountLabel } = useLookup()
 type Candidate = InsightPost & { seriesId: number | null, seriesName: string | null }
 const PAGE_SIZE = 8
 const candidates = ref<Candidate[]>([])
-const form = reactive({ name: '', postIds: [] as number[], matchType: 'any' as 'any' | 'keyword', keywords: '', repliesText: '', dmOn: false, dmText: '', enabled: true })
+const form = reactive({ name: '', postIds: [] as number[], matchType: 'any' as 'any' | 'keyword', keywords: '', repliesText: '', dmText: '', enabled: true })
 const tab = ref<number | 'all'>('all')
 const page = ref(1)
 const error = ref('')
@@ -19,7 +19,7 @@ watch(open, async (value) => {
   const s = props.series
   Object.assign(form, {
     name: s?.name ?? '', postIds: s?.posts.map(p => p.id) ?? [], matchType: s?.matchType ?? 'any', keywords: s?.keywords ?? '',
-    repliesText: s?.replies.join('\n') ?? '', dmOn: Boolean(s?.dmText), dmText: s?.dmText ?? '', enabled: s?.enabled ?? true,
+    repliesText: s?.replies.join('\n') ?? '', dmText: s?.dmText ?? '', enabled: s?.enabled ?? true,
   })
   tab.value = 'all'
   page.value = 1
@@ -49,7 +49,7 @@ async function save() {
   const body = {
     name: form.name, postIds: form.postIds, matchType: form.matchType, keywords: form.keywords, enabled: form.enabled,
     replies: form.repliesText.split('\n').map(s => s.trim()).filter(Boolean),
-    dmText: form.dmOn ? form.dmText : '',
+    dmText: form.dmText.trim(),
   }
   try {
     const id = props.series
@@ -123,9 +123,8 @@ async function remove() {
         <label class="field">回覆留言（一行一句，輪流使用）
           <textarea v-model="form.repliesText" rows="4" />
         </label>
-        <label class="check"><input v-model="form.dmOn" type="checkbox">同時私訊留言者</label>
-        <label v-if="form.dmOn" class="field">私訊內容
-          <textarea v-model="form.dmText" rows="4" maxlength="1000" required />
+        <label class="field">私訊留言者（留空就不私訊）
+          <textarea v-model="form.dmText" rows="4" maxlength="1000" />
         </label>
       </section>
     </div>
