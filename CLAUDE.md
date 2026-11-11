@@ -37,6 +37,10 @@
   （2026-11-11 使用者決定整合，`reply_rules` 表已刪）。不要再做回獨立的規則管理。
 - 一則貼文只能屬於一個系列文（`collection_posts.post_id` 唯一）。留言進來時用（帳號, 平台貼文 id）找到 `account_posts`
   → 系列文 → 依設定回覆；貼文不在系列裡、系列暫停、或沒寫回覆內容時完全不處理也不留紀錄（`server/utils/replies.ts`）。
+- 同步時會補抓系列文裡各貼文的既有留言（`importSeriesComments`）：**只記錄、不自動送出**，命中的標成待送出，由會員決定要不要回。
+  不要改成自動送出，否則把一篇已有大量留言的貼文加進系列文會一口氣對所有人回覆加私訊。
+- 圖表用 Chart.js，包在 `app/components/BarChart.vue`（只註冊長條圖用到的部分）。互動組成的四個顏色用 dataviz 的
+  `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。每組圖表下面留一個「資料表」。
 - 留言紀錄用 `comments.collection_id` 歸屬系列文，顯示在系列成效頁。`comments.rule_id`／`rule_name`／`kind` 是舊欄位。
 - 側欄順序：Dashboard、Series、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
   點進去就是成效頁（一個系列文只有一頁）。新增與設定共用 `SeriesDialog`（畫面中間的視窗），貼文清單在區塊內捲動並分頁。

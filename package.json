@@ -3,7 +3,9 @@
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.0.8",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -13,6 +15,7 @@
     "preview:worker": "wrangler dev -c .output/server/wrangler.json --local --port 3010 --persist-to .wrangler/state --local-upstream localhost:3010"
   },
   "dependencies": {
+    "chart.js": "^4.6.1",
     "drizzle-orm": "^0.45.4",
     "nuxt": "^4.4.6",
     "nuxt-auth-utils": "^0.5.20",
