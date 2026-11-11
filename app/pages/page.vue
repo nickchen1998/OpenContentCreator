@@ -219,7 +219,7 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
 
           <div class="col" style="gap: 8px">
             <h2>分享預覽</h2>
-            <!-- 左邊只負責設定；貼出去的樣子在右邊預覽的「通訊軟體」。點進輸入框時自動切過去 -->
+            <!-- 左邊只負責設定；貼出去的樣子在右邊預覽的「快取」分頁。點進輸入框時自動切過去 -->
             <label class="field">標題<input v-model="draft.shareTitle" type="text" maxlength="60" :placeholder="draft.name" @input="touch" @focus="device = 'chat'"></label>
             <label class="field">說明<textarea v-model="draft.shareText" rows="2" maxlength="160" :placeholder="draft.bio" style="resize: none" @input="touch" @focus="device = 'chat'" /></label>
           </div>
@@ -250,7 +250,7 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
           <div class="seg" role="group" aria-label="預覽裝置">
             <button type="button" :aria-pressed="device === 'phone'" @click="device = 'phone'">手機</button>
             <button type="button" :aria-pressed="device === 'desktop'" @click="device = 'desktop'">電腦</button>
-            <button type="button" :aria-pressed="device === 'chat'" @click="device = 'chat'">通訊軟體</button>
+            <button type="button" :aria-pressed="device === 'chat'" @click="device = 'chat'">快取</button>
           </div>
         </div>
         <div class="preview-stage fill">

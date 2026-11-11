@@ -11,6 +11,13 @@ const todo = ref({ waiting: 0, oldestWaitAt: null as string | null, failed: 0, f
 const followers = ref<Record<number, { followers: number, change: number | null }>>({})
 const series = ref<Series[]>([])
 const syncing = ref(false)
+// 點「各帳號」的一列：開粉絲成長的視窗
+const growthOpen = ref(false)
+const growthAccount = ref<Account>()
+function openGrowth(accountId: number) {
+  growthAccount.value = boot.value.accounts.find(a => a.id === accountId)
+  growthOpen.value = !!growthAccount.value
+}
 const loaded = ref(false)
 const { account } = useLookup()
 
@@ -147,14 +154,14 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
     </div>
     <div class="row">
       <NuxtLink v-if="todo.failed" :to="todo.failedSeriesId ? `/series/${todo.failedSeriesId}` : '/feed'" class="alert-chip">{{ todo.failed }} 則送出失敗</NuxtLink>
-      <NuxtLink v-if="linkErrors.length" to="/accounts" class="alert-chip" :title="linkErrors[0]?.lastError">{{ linkErrors.length }} 個連結異常</NuxtLink>
+      <a v-if="linkErrors.length" href="/accounts" class="alert-chip" :title="linkErrors[0]?.lastError" @click.prevent="openSetup('accounts')">{{ linkErrors.length }} 個連結異常</a>
       <span v-if="lastSynced" class="small muted">更新於 {{ lastSynced }}</span>
       <button type="button" class="btn" :disabled="syncing || !connected" @click="sync">{{ syncing ? '同步中…' : '立即同步' }}</button>
     </div>
   </div>
 
   <div v-if="loaded && !connected" class="card empty">
-    還沒有連結帳號　<NuxtLink to="/accounts">前往連結</NuxtLink>
+    還沒有連結帳號　<a href="/accounts" @click.prevent="openSetup('accounts')">前往連結</a>
   </div>
 
   <!-- 一行五格：第一格是要動手的事，後面四格是這段期間的成效。送出失敗、連結異常平常不占位置，有狀況才出現在上面那一列 -->
@@ -239,8 +246,8 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
               <tr><th scope="col">帳號</th><th scope="col">粉絲</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動率</th></tr>
             </thead>
             <tbody>
-              <tr v-for="r in summary.rows" :key="r.accountId">
-                <th scope="row"><PlatformIcon :platform="r.platform" label /><div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
+              <tr v-for="r in summary.rows" :key="r.accountId" class="clickable" @click="openGrowth(r.accountId)">
+                <th scope="row"><button type="button" class="row-btn" :aria-label="`${r.name} 的粉絲成長`" @click.stop="openGrowth(r.accountId)"><PlatformIcon :platform="r.platform" label /><span class="small muted" style="font-weight: 400">{{ r.name }}</span></button></th>
                 <td>
                   <template v-if="followers[r.accountId]">
                     {{ fmtNum(followers[r.accountId]!.followers) }}
@@ -259,4 +266,5 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
       </section>
     </div>
   </div>
+  <GrowthDialog v-model="growthOpen" :account="growthAccount" />
 </template>

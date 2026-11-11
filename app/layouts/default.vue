@@ -8,22 +8,26 @@ const userMenuOpen = ref(false)
 const passwordOpen = ref(false)
 const me = computed(() => user.value as { username?: string, isAdmin?: boolean } | null)
 
-const sections = computed(() => [
-  { label: 'Workspace', items: [
-    { to: '/', en: 'Dashboard', zh: '儀表板' },
-    { to: '/series', en: 'Series', zh: '系列文管理' },
-    { to: '/feed', en: 'Posts', zh: '貼文管理' },
-    { to: '/schedule', en: 'Schedule', zh: '排程週曆' },
-    { to: '/page', en: 'Page', zh: '公開頁面' },
-  ] },
-  { label: 'Setup', items: [
-    { to: '/accounts', en: 'Accounts', zh: '帳號與連結' },
-    { to: '/connections', en: 'Connections', zh: 'MCP 連線與提案', badge: pending.value },
-    ...(me.value?.isAdmin ? [{ to: '/members', en: 'Members', zh: '會員管理' }] : []),
-  ] },
-])
+const items = [
+  { to: '/', en: 'Dashboard', zh: '儀表板' },
+  { to: '/series', en: 'Series', zh: '系列文管理' },
+  { to: '/feed', en: 'Posts', zh: '貼文管理' },
+  { to: '/schedule', en: 'Schedule', zh: '排程週曆' },
+  { to: '/page', en: 'Page', zh: '公開頁面' },
+]
+// 設定類的畫面收在左下角使用者選單裡，點了在畫面中間開視窗（不是頁面）
+const setup = useSetupPanel()
+const SETUP = { accounts: { en: 'Accounts', zh: '帳號與連結' }, connections: { en: 'Connections', zh: 'MCP 連線與提案' }, members: { en: 'Members', zh: '會員管理' } }
+const setupOpen = computed({ get: () => setup.value != null && (setup.value !== 'members' || !!me.value?.isAdmin), set: (value) => { if (!value) setup.value = null } })
+function pickSetup(panel: SetupPanel) {
+  userMenuOpen.value = false
+  sidebarOpen.value = false
+  setup.value = panel
+}
 const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path.startsWith(to) || (to === '/schedule' && route.path.startsWith('/posts')))
 watch(() => route.fullPath, () => (sidebarOpen.value = false))
+// 視窗裡的連結把人帶到別的頁面時，視窗跟著關掉
+watch(() => route.path, (path, from) => { if (!['/accounts', '/connections', '/members'].includes(from)) setup.value = null })
 
 onMounted(async () => {
   await attempt(refreshBoot)
@@ -71,18 +75,20 @@ async function savePassword() {
       </NuxtLink>
       <div class="sidebar-scroll">
         <nav class="sidebar-nav" aria-label="主選單">
-          <template v-for="section in sections" :key="section.label">
-            <p class="nav-section-label">{{ section.label }}</p>
-            <NuxtLink v-for="item in section.items" :key="item.to" :to="item.to" class="nav-item" :class="{ active: isActive(item.to) }" :aria-current="isActive(item.to) ? 'page' : undefined">
-              <span class="nav-item-en">{{ item.en }}<span v-if="'badge' in item && item.badge" class="nav-badge">{{ item.badge }}</span></span>
-              <span class="nav-item-zh">{{ item.zh }}</span>
-            </NuxtLink>
-          </template>
+          <p class="nav-section-label">Workspace</p>
+          <NuxtLink v-for="item in items" :key="item.to" :to="item.to" class="nav-item" :class="{ active: isActive(item.to) }" :aria-current="isActive(item.to) ? 'page' : undefined">
+            <span class="nav-item-en">{{ item.en }}</span>
+            <span class="nav-item-zh">{{ item.zh }}</span>
+          </NuxtLink>
         </nav>
       </div>
       <div class="sidebar-user">
         <div v-if="userMenuOpen" class="user-backdrop" @click="userMenuOpen = false" />
         <div v-if="userMenuOpen" class="user-menu fade-in">
+          <button class="user-menu-item" type="button" @click="pickSetup('accounts')">帳號與連結</button>
+          <button class="user-menu-item" type="button" @click="pickSetup('connections')">MCP 連線與提案<span v-if="pending" class="menu-badge">{{ pending }}</span></button>
+          <button v-if="me?.isAdmin" class="user-menu-item" type="button" @click="pickSetup('members')">會員管理</button>
+          <div class="user-menu-divider" />
           <button class="user-menu-item" type="button" @click="openPassword">修改密碼</button>
           <div class="user-menu-divider" />
           <button class="user-menu-item logout" type="button" @click="logout">登出</button>
@@ -93,6 +99,7 @@ async function savePassword() {
             <span class="user-name">{{ me?.username }}</span>
             <span class="user-role">{{ me?.isAdmin ? '管理員' : '會員' }}</span>
           </span>
+          <span v-if="pending" class="nav-badge" :aria-label="`${pending} 則提案待處理`">{{ pending }}</span>
           <svg class="user-caret" :class="{ open: userMenuOpen }" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
       </div>
@@ -110,6 +117,12 @@ async function savePassword() {
         <div v-else class="empty">載入中…</div>
       </main>
     </div>
+
+    <PanelDialog v-model="setupOpen" :en="setup ? SETUP[setup].en : ''" :title="setup ? SETUP[setup].zh : ''">
+      <SetupAccounts v-if="setup === 'accounts'" />
+      <SetupConnections v-else-if="setup === 'connections'" />
+      <SetupMembers v-else-if="setup === 'members'" />
+    </PanelDialog>
 
     <AppDialog v-model="passwordOpen" title="修改密碼" :error="pwError" @submit="savePassword">
       <label class="field">目前的密碼<input v-model="pw.current" type="password" autocomplete="current-password" required></label>

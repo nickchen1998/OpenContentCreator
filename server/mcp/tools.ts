@@ -127,6 +127,51 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'get_follower_growth',
+    description: '讀取某個帳號的粉絲成長節奏：每成長 step 個粉絲（預設 100）花了幾天、比前一個區間快或慢幾天，以及每個區間內發了哪些貼文（含觀看與互動）。只有資料、沒有原因分析，分析由你來做。粉絲數每天記一筆，所以精度是「天」，而且只能從 recorded_since 那天算起；partial 是 true 的區間是從半路開始記的，天數偏短，不要拿來比較。YouTube 的訂閱數平台只給三位有效數字，大頻道請把 step 調大。',
+    inputSchema: obj({ account_id: { type: 'integer', description: '帳號 id（由 list_accounts 取得）' }, step: { type: 'integer', minimum: 10, maximum: 1000000, description: '每幾個粉絲算一個區間，預設 100' } }, ['account_id']),
+    readOnly: true,
+    run: async (args, ctx) => {
+      if (!ctx.project.canReadInsights) throw bad('這個專案沒有讀取成效的權限')
+      const account = ctx.boot.accounts.find(a => a.id === int(args.account_id, 'account_id', 1))
+      if (!account) throw bad('找不到這個帳號，請用 list_accounts 確認 account_id')
+      const growth = await loadFollowerGrowth(account.id, args.step == null ? 100 : int(args.step, 'step', 10, 1_000_000))
+      const p = growth.inProgress
+      return {
+        account: accountLabel(ctx.boot, account.id),
+        followers: growth.followers,
+        recorded_since: growth.since,
+        step: growth.step,
+        average_days: growth.averageDays,
+        in_progress: p && { from: p.from, to: p.to, started: p.started, days_so_far: p.daysSoFar, gained: p.gained, partial: p.partial, posts: p.posts },
+        intervals: growth.intervals.slice(0, 30).map(i => ({ from: i.from, to: i.to, started: i.started, reached: i.reached, days: i.days, vs_previous_days: i.vsPrevious, partial: i.partial, posts: i.posts })),
+      }
+    },
+  },
+  {
+    name: 'compare_follower_periods',
+    description: '讀取某個帳號在幾段自訂期間（1 到 4 段，每段最長 366 天）各自的粉絲增減、平均每天增加幾個，以及期間內發的貼文（含觀看與互動），用來比較不同時期，例如去年十月跟今年十月。粉絲紀錄是從某一天才開始記的：recorded_from／recorded_to 是那段期間實際有紀錄的範圍，跟 from／to 不一樣代表紀錄不完整；整段都沒有紀錄時粉絲相關的欄位是 null，貼文仍然會列出來。',
+    inputSchema: obj({
+      account_id: { type: 'integer', description: '帳號 id（由 list_accounts 取得）' },
+      periods: { type: 'array', minItems: 1, maxItems: 4, items: obj({ from: DAY, to: DAY }, ['from', 'to']), description: '要比較的期間，含頭尾兩天' },
+    }, ['account_id', 'periods']),
+    readOnly: true,
+    run: async (args, ctx) => {
+      if (!ctx.project.canReadInsights) throw bad('這個專案沒有讀取成效的權限')
+      const account = ctx.boot.accounts.find(a => a.id === int(args.account_id, 'account_id', 1))
+      if (!account) throw bad('找不到這個帳號，請用 list_accounts 確認 account_id')
+      const periods = await loadFollowerPeriods(account.id, parsePeriods(args.periods))
+      return {
+        account: accountLabel(ctx.boot, account.id),
+        periods: periods.map(p => ({
+          from: p.from, to: p.to, days: p.days, recorded_from: p.recordedFrom, recorded_to: p.recordedTo,
+          followers_start: p.startFollowers, followers_end: p.endFollowers, gain: p.gain, gain_per_day: p.perDay,
+          post_count: p.posts.length, views: p.views, engagement: p.engagement, posts: p.posts,
+        })),
+      }
+    },
+  },
+  {
     name: 'propose_post',
     description: '送出一則貼文提案，進入站主的待確認佇列（不會直接排入，也不會自動發文）。可以附上各帳號的文案。有撞期也能送出，但會被標成時段衝突、可能被要求改時間，建議先用 check_conflicts 或 find_open_slots。這個工具不是冪等的：重送會再建立一筆提案。',
     inputSchema: obj({

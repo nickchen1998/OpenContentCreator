@@ -1,5 +1,5 @@
-import { and, desc, eq, gte } from 'drizzle-orm'
-import { accounts, accountStats, connections } from '../database/schema'
+import { and, asc, desc, eq, gte, lte } from 'drizzle-orm'
+import { accountPosts, accounts, accountStats, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
 
@@ -54,4 +54,52 @@ export async function loadFollowers(uid: number, days: number) {
     out[id] = { followers: mine[0]!.followers, change: base ? mine[0]!.followers - base.followers : null }
   }
   return out
+}
+
+/**
+ * 粉絲成長分析要的原始資料：這個帳號全部的每日粉絲紀錄（由舊到新）與指定日期（台北）範圍內發的貼文。兩個查詢。
+ * **accountId 要先確認是這個會員的**（`ownedAccount` 或 `loadBoot` 裡找得到）再呼叫。
+ */
+async function loadGrowthData(accountId: number, postsFrom: string | null, postsTo: string | null) {
+  const db = useDb()
+  // 台北的一天從 UTC 的前一天 16:00 開始
+  const startOf = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) - 8 * 3600_000).toISOString()
+  const [stats, posts] = await Promise.all([
+    db.select({ day: accountStats.day, followers: accountStats.followers }).from(accountStats)
+      .where(eq(accountStats.accountId, accountId)).orderBy(asc(accountStats.day)).limit(3000),
+    postsFrom == null
+      ? Promise.resolve([])
+      : db.select({ publishedAt: accountPosts.publishedAt, text: accountPosts.text, url: accountPosts.url, views: accountPosts.views, likes: accountPosts.likes, comments: accountPosts.comments, shares: accountPosts.shares })
+          .from(accountPosts).where(and(eq(accountPosts.accountId, accountId), gte(accountPosts.publishedAt, startOf(postsFrom)), ...(postsTo ? [lte(accountPosts.publishedAt, startOf(addDays(postsTo, 1)))] : [])))
+          .orderBy(desc(accountPosts.publishedAt)).limit(2000),
+  ])
+  return { stats, posts }
+}
+
+/** 每成長 step 個粉絲花了幾天（算法在 shared/utils/growth.ts）。 */
+export async function loadFollowerGrowth(accountId: number, step: number) {
+  const db = useDb()
+  const [first] = await db.select({ day: accountStats.day }).from(accountStats).where(eq(accountStats.accountId, accountId)).orderBy(asc(accountStats.day)).limit(1)
+  const { stats, posts } = await loadGrowthData(accountId, first?.day ?? null, null)
+  return followerGrowth(stats, posts, step, todayTaipei())
+}
+
+/** 幾段自訂期間各自的粉絲增減與貼文，用來互相比較（例如去年十月跟今年十月）。 */
+export async function loadFollowerPeriods(accountId: number, periods: { from: string, to: string }[]) {
+  const from = periods.map(p => p.from).sort()[0]!
+  const to = periods.map(p => p.to).sort().at(-1)!
+  const { stats, posts } = await loadGrowthData(accountId, from, to)
+  return periods.map(p => periodSummary(stats, posts, p.from, p.to))
+}
+
+/** 檢查並整理期間：日期格式、先後順序、最長 366 天、最多 4 段。網頁與 MCP 共用。 */
+export function parsePeriods(value: unknown) {
+  if (!Array.isArray(value) || !value.length || value.length > 4) throw bad('期間要 1 到 4 段')
+  return value.map((item) => {
+    const { from, to } = (item ?? {}) as { from?: unknown, to?: unknown }
+    if (typeof from !== 'string' || typeof to !== 'string' || !DAY_RE.test(from) || !DAY_RE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) throw bad('日期格式要是 YYYY-MM-DD')
+    if (to < from) throw bad('結束日期不能比開始日期早')
+    if (dayDiff(from, to) > 365) throw bad('一段期間最長 366 天')
+    return { from, to }
+  })
 }

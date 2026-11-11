@@ -84,3 +84,30 @@ export async function syncAll() {
   notify(errors.length ? errors.join('；') : '已同步')
   return true
 }
+
+/** 設定類的畫面（帳號與連結、MCP 連線與提案、會員管理）不是頁面，是從使用者選單打開的視窗；開哪一個記在這裡。 */
+export type SetupPanel = 'accounts' | 'connections' | 'members'
+export const useSetupPanel = () => useState<SetupPanel | null>('setupPanel', () => null)
+export const openSetup = (panel: SetupPanel) => (useSetupPanel().value = panel)
+
+// 從 Google 的同意畫面回來時，結果是網址上的代碼（/accounts?youtube=ok 等）。只認得這幾個代碼，其他的一律不顯示，
+// 免得有人做一個連結讓你看到他指定的文字
+const YOUTUBE_RESULTS: Record<string, string> = {
+  ok: 'YouTube 已連結',
+  denied: 'YouTube 連結失敗：你沒有同意授權',
+  google: 'YouTube 連結失敗：Google 沒有完成授權，請再試一次',
+  invalid: 'YouTube 連結失敗：連結的請求無效，請再試一次',
+  expired: 'YouTube 連結失敗：連結的請求過期了，請再試一次',
+  account: 'YouTube 連結失敗：找不到要連結的帳號',
+  notconfigured: 'YouTube 連結失敗：站方還沒有設定 YouTube 的連線資訊',
+  nochannel: 'YouTube 連結失敗：這個 Google 帳號沒有 YouTube 頻道',
+  norefresh: 'YouTube 連結失敗：請到 Google 帳號的「第三方應用程式存取權」移除這個應用程式後再連結一次',
+  failed: 'YouTube 連結失敗，請再試一次',
+}
+/** 舊的設定頁網址：導回儀表板、打開對應的視窗。 */
+export async function openSetupFromRoute(panel: SetupPanel) {
+  const result = useRoute().query.youtube
+  await navigateTo('/', { replace: true })
+  openSetup(panel)
+  if (panel === 'accounts' && typeof result === 'string' && YOUTUBE_RESULTS[result]) notify(YOUTUBE_RESULTS[result])
+}
