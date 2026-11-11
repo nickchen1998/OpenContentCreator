@@ -12,7 +12,7 @@
 
 ## 會員與資料隔離（最重要）
 
-- 每個會員的資料互相獨立，直接用 `owner_id` 歸屬：`accounts`、`posts`、`reply_rules`、`projects`、`collections`。
+- 每個會員的資料互相獨立，直接用 `owner_id` 歸屬：`accounts`、`posts`、`projects`、`collections`（系列文）。
   其他表經由這幾張表歸屬到會員（`comments`／`connections`／`account_posts` → `accounts`；`post_targets`／`assets` → `posts`）。
 - **沒有「帳號群組」這個概念**（使用者覺得難懂，2026-11-11 連資料表一起移除）。不要再加回任何把帳號分組的中間層；
   要把貼文歸類看成效用的是「系列」（`collections`）。
@@ -30,6 +30,15 @@
 - 字級：內文 15、頁標題 24/800、區塊標題 17/700、輔助文字 13、英文小標 11、按鈕 14／13、表格 13.5。
 - **畫面上不放說明文字，也不放頁面標題與副標**（側欄已經標出所在位置）：使用者看到就該知道怎麼用。
   需要解釋的東西放 `/guide`。不要用藍色當主色或 logo 底色。
+
+## 系列文是中心
+
+- 回覆設定跟著系列文走（`collections` 表，介面與 API 叫 series）：沒有獨立的「規則」頁，也沒有對全部帳號生效的規則
+  （2026-11-11 使用者決定整合，`reply_rules` 表已刪）。不要再做回獨立的規則管理。
+- 一則貼文只能屬於一個系列文（`collection_posts.post_id` 唯一）。留言進來時用（帳號, 平台貼文 id）找到 `account_posts`
+  → 系列文 → 依設定回覆；貼文不在系列裡、系列暫停、或沒寫回覆內容時完全不處理也不留紀錄（`server/utils/replies.ts`）。
+- 留言紀錄用 `comments.collection_id` 歸屬系列文，顯示在系列成效頁。`comments.rule_id`／`rule_name`／`kind` 是舊欄位。
+- 側欄順序：Dashboard、Series、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點（進設定頁），不放按鈕。
 
 ## 平台串接
 
@@ -54,7 +63,6 @@
   產生的用戶權杖 + app id + app secret，由 `pageTokenFromUserToken` 換成不會到期的 Page token。直接貼 Page token 也還是收。
 - 成效來自 `account_posts`（`syncAccountPosts` 自動匯入帳號最近的貼文），**跟排程裡的 posts 沒有關聯**；使用者不要手動貼連結
   或登錄數字的做法。列表那一趟就有按讚與留言數，觀看／分享／收藏要逐則打 insights，所以每次只替最久沒更新的幾則抓。
-- 規則的「指定貼文」存的是平台上的貼文 id（`reply_rules.external_post_id`），不是我們自己的 posts.id。
 - 排程每次只處理少量再輪替（Free 方案每次 50 個對外請求、50 個 D1 查詢）；不要在迴圈裡每筆查一次 D1。
 - 本機觸發排程：`wrangler dev --test-scheduled` 後打 `/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*`。
 

@@ -54,14 +54,11 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : '送出失敗').slice(0, 300)
 
 interface InboundEvent {
-  kind: 'comment'
   externalId: string
   senderId: string
   author: string
   text: string
-  externalPostId?: string
-  /** 已經知道貼文內容的話直接帶進來，省一次 API */
-  postTitle?: string
+  externalPostId: string
 }
 
 /** 從 webhook（或 Threads 輪詢）收進一則留言或私訊：去重 → 跑規則 → 連結開著自動送出就直接回 */
@@ -74,13 +71,9 @@ export async function receive(boot: OwnedBoot, platform: MetaPlatform, connectio
     .where(and(eq(comments.accountId, connection.accountId), eq(comments.externalId, event.externalId)))
   if (seen) return // Meta 會重送同一個事件
 
-  let postTitle = event.postTitle ?? ''
-  if (!postTitle && event.kind === 'comment' && event.externalPostId) {
-    postTitle = await postCaption(platform, await unseal(connection.tokenEnc), event.externalPostId)
-  }
-  let row: CommentRecord
+  let row: CommentRecord | undefined
   try {
-    row = await processComment(boot, { accountId: connection.accountId, ...event, postTitle })
+    row = await processComment(boot, { accountId: connection.accountId, ...event })
   }
   catch (e) {
     // 兩個重送的事件同時進來時，後到的會撞到 (account_id, external_id) 的唯一索引
@@ -88,7 +81,8 @@ export async function receive(boot: OwnedBoot, platform: MetaPlatform, connectio
     throw e
   }
   await db.update(connections).set({ lastEventAt: nowIso() }).where(eq(connections.id, connection.id))
-  if (row.status === 'ready' && connection.autoSend) await deliver(platform, connection, row)
+  // 貼文不在任何系列文裡（或系列暫停中）時 row 是空的：不回覆、不留紀錄
+  if (row?.status === 'ready' && connection.autoSend) await deliver(platform, connection, row)
 }
 
 /** 把 Meta webhook 的一個 entry 拆成留言與私訊事件。Instagram 與 Facebook 粉專的格式不同 */
@@ -97,11 +91,11 @@ export function eventsOf(platform: 'instagram' | 'facebook', entry: any): Inboun
   for (const change of entry?.changes ?? []) {
     const v = change?.value ?? {}
     if (platform === 'instagram' && change.field === 'comments') {
-      events.push({ kind: 'comment', externalId: String(v.id ?? ''), senderId: String(v.from?.id ?? ''), author: v.from?.username ? `@${v.from.username}` : '（未知）', text: String(v.text ?? ''), externalPostId: String(v.media?.id ?? '') })
+      events.push({ externalId: String(v.id ?? ''), senderId: String(v.from?.id ?? ''), author: v.from?.username ? `@${v.from.username}` : '（未知）', text: String(v.text ?? ''), externalPostId: String(v.media?.id ?? '') })
     }
     // 粉專的 feed 事件什麼都有（貼文、按讚、編輯…），只收「新增留言」
     if (platform === 'facebook' && change.field === 'feed' && v.item === 'comment' && v.verb === 'add') {
-      events.push({ kind: 'comment', externalId: String(v.comment_id ?? ''), senderId: String(v.from?.id ?? ''), author: String(v.from?.name ?? '（未知）'), text: String(v.message ?? ''), externalPostId: String(v.post_id ?? '') })
+      events.push({ externalId: String(v.comment_id ?? ''), senderId: String(v.from?.id ?? ''), author: String(v.from?.name ?? '（未知）'), text: String(v.message ?? ''), externalPostId: String(v.post_id ?? '') })
     }
   }
   // 私訊不處理：這個系統只做「留言 → 回覆留言＋私訊留言者」，不做私訊自動回覆（使用者的決定）

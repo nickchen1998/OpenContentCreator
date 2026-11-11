@@ -94,27 +94,6 @@ export const userSettings = sqliteTable('user_settings', {
   value: text('value').notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.key] })])
 
-// 固定回覆規則：對會員的全部帳號生效，或限定單一帳號、單一貼文
-export const replyRules = sqliteTable('reply_rules', {
-  id: id(),
-  ownerId: owner(),
-  name: text('name').notNull(),
-  accountId: integer('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
-  postId: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
-  matchType: text('match_type').notNull().default('keyword'), // keyword | any
-  keywords: text('keywords').notNull().default(''), // 逗號分隔，命中任一個就算
-  action: text('action').notNull().default('reply'), // reply | reply_dm
-  replies: text('replies', { mode: 'json' }).$type<string[]>().notNull(),
-  dmText: text('dm_text').notNull().default(''),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  channel: text('channel').notNull().default('comment'), // comment 留言 | message 私訊
-  // 只對平台上的某一則貼文生效（從帳號最近的貼文挑的）；空字串是全部貼文。postLabel 是當時的貼文文字，顯示用
-  externalPostId: text('external_post_id').notNull().default(''),
-  postLabel: text('post_label').notNull().default(''),
-  cursor: integer('cursor').notNull().default(0), // 輪替用：下一次要用第幾句
-  createdAt: text('created_at').notNull(),
-})
-
 // 留言與處理結果。status: ready 已選好固定回覆、待送出 | sent 已回覆 | unmatched 沒命中 | skipped 命中但不回（防洗版）| handled 你自己處理了
 export const comments = sqliteTable('comments', {
   id: id(),
@@ -134,6 +113,8 @@ export const comments = sqliteTable('comments', {
   externalPostId: text('external_post_id').notNull().default(''), // 平台上的貼文 id
   senderId: text('sender_id').notNull().default(''), // 平台上的留言者／傳訊者 id（回私訊要用）
   error: text('error').notNull().default(''), // 送出失敗時平台回的錯誤
+  // 這則留言屬於哪個系列文（留言所在的貼文當時歸在哪個系列）。系列刪掉後變成 null，紀錄本身留著
+  collectionId: integer('collection_id').references(() => collections.id, { onDelete: 'set null' }),
 }, t => [index('comments_account_idx').on(t.accountId, t.createdAt), uniqueIndex('comments_external_idx').on(t.accountId, t.externalId)])
 
 // 帳號與平台 API 的連結。Meta 的部分由會員用自己的 Meta App 產生 token 貼進來（只服務自己的帳號，不用 App Review）。
@@ -170,15 +151,23 @@ export const accountPosts = sqliteTable('account_posts', {
   insightsAt: text('insights_at'), // 上次抓 insight（觀看、分享、收藏）的時間；按讚與留言數每次同步都會更新
 }, t => [uniqueIndex('account_posts_external_idx').on(t.accountId, t.externalId), index('account_posts_published_idx').on(t.accountId, t.publishedAt)])
 
-// 系列：會員自己挑的一組貼文（可以跨帳號、跨平台），用來合併看成效。一則貼文可以在多個系列裡
+// 系列文：會員挑的一組貼文（可以跨帳號、跨平台），一起看成效、共用一套留言回覆設定。
+// 一則貼文只能屬於一個系列文（collection_posts.post_id 唯一），因為回覆設定跟著系列走。
 export const collections = sqliteTable('collections', {
   id: id(),
   ownerId: owner(),
   name: text('name').notNull(),
   createdAt: text('created_at').notNull(),
+  // 有人在系列裡的貼文留言時：matchType any = 任何留言都回；keyword = 留言含任一關鍵字才回
+  matchType: text('match_type').notNull().default('any'),
+  keywords: text('keywords').notNull().default(''), // 逗號分隔
+  replies: text('replies', { mode: 'json' }).$type<string[]>().notNull().default([]), // 公開回覆，多句輪流；空的就是不回覆
+  dmText: text('dm_text').notNull().default(''), // 同時私訊留言者的內容；空字串 = 不私訊
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  cursor: integer('cursor').notNull().default(0), // 輪替用：下一次要用第幾句
 }, t => [index('collections_owner_idx').on(t.ownerId)])
 
 export const collectionPosts = sqliteTable('collection_posts', {
   collectionId: integer('collection_id').notNull().references(() => collections.id, { onDelete: 'cascade' }),
   postId: integer('post_id').notNull().references(() => accountPosts.id, { onDelete: 'cascade' }),
-}, t => [primaryKey({ columns: [t.collectionId, t.postId] })])
+}, t => [primaryKey({ columns: [t.collectionId, t.postId] }), uniqueIndex('collection_posts_post_idx').on(t.postId)])

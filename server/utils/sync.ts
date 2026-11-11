@@ -109,8 +109,8 @@ export async function pollThreads(maxConnections = 3) {
         for (const reply of fresh.slice(0, 5)) {
           boot ??= await loadBoot(ownerId)
           await receive(boot, 'threads', connection, {
-            kind: 'comment', externalId: reply.id, senderId: reply.username, author: `@${reply.username}`, text: reply.text,
-            externalPostId: thread.id, postTitle: thread.text,
+            externalId: reply.id, senderId: reply.username, author: `@${reply.username}`, text: reply.text,
+            externalPostId: thread.id,
           })
         }
       }

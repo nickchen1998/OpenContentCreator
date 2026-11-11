@@ -64,6 +64,13 @@
       "when": 1794370879446,
       "tag": "0008_remove_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794371950185,
+      "tag": "0009_series_rules",
+      "breakpoints": true
     }
   ]
 }

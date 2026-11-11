@@ -10,17 +10,17 @@ const me = computed(() => user.value as { username?: string, isAdmin?: boolean }
 
 const sections = computed(() => [
   { label: 'Workspace', items: [
-    { to: '/', en: 'Schedule', zh: '排程週曆' },
-    { to: '/insights', en: 'Insights', zh: '成效總覽' },
-    { to: '/replies', en: 'Replies', zh: '留言自動回覆' },
+    { to: '/', en: 'Dashboard', zh: '儀表板' },
+    { to: '/series', en: 'Series', zh: '系列文管理' },
+    { to: '/schedule', en: 'Schedule', zh: '排程週曆' },
   ] },
   { label: 'Setup', items: [
-    { to: '/connections', en: 'Connections', zh: 'MCP 連線與提案', badge: pending.value },
     { to: '/accounts', en: 'Accounts', zh: '帳號與連結' },
+    { to: '/connections', en: 'Connections', zh: 'MCP 連線與提案', badge: pending.value },
     ...(me.value?.isAdmin ? [{ to: '/members', en: 'Members', zh: '會員管理' }] : []),
   ] },
 ])
-const isActive = (to: string) => (to === '/' ? route.path === '/' || route.path.startsWith('/posts') : route.path.startsWith(to))
+const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path.startsWith(to) || (to === '/schedule' && route.path.startsWith('/posts')))
 watch(() => route.fullPath, () => (sidebarOpen.value = false))
 
 onMounted(async () => {

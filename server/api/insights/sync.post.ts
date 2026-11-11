@@ -15,5 +15,5 @@ export default defineEventHandler(async (event) => {
     const result = await syncAccountPosts(r.platform as MetaPlatform, r.connection, budget)
     if (result.error) errors.push(`${r.connection.externalName}：${result.error}`)
   }
-  return { ...(await loadInsights(uid, 28)), errors }
+  return { errors }
 })
