@@ -291,3 +291,14 @@ table.compact .bar-track { min-width: 70px; }
 .chip[aria-pressed="true"] .pf-icon { color: currentColor; }
 .pf-row { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* ---- 串文管理 ---- */
+.thread-list { border: 1px solid var(--line); border-radius: var(--radius-field); overflow-y: auto; }
+.thread-item { display: flex; flex-direction: column; gap: 4px; width: 100%; min-height: 44px; padding: 12px 14px; text-align: left; background: none; border: 0; color: var(--ink); cursor: pointer; }
+.thread-item + .thread-item { border-top: 1px solid var(--line); }
+.thread-item:hover { background: var(--green-faint); }
+.thread-item[aria-pressed="true"] { background: var(--green-soft); }
+.thread-text { font-size: 14.5px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.thread-full { margin: 0; max-height: 4.8em; overflow-y: auto; }
+.thread-series { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-radius: var(--radius-field); background: var(--green-faint); }
+.thread-series select { flex: 1 1 180px; min-height: 40px; }

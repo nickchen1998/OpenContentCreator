@@ -15,7 +15,8 @@ export interface Incoming {
 
 /**
  * 留言回覆的引擎：回覆設定跟著「系列文」走。留言所在的貼文屬於某個系列文才會記錄，並依那個系列的設定回覆
- * （回覆留言與私訊各自有填才做，兩個都沒填就只記錄）；不在任何系列裡的貼文完全不處理、也不留紀錄。
+ * （回覆留言與私訊各自有填才做，兩個都沒填就只記錄）；不在任何系列裡的貼文完全不處理、也不留紀錄，
+ * 只有 Threads 例外：全部都記錄（不回），給串文管理頁用。
  * 防洗版：同一個人在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
  * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
@@ -27,9 +28,9 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
   const hourAgo = new Date(Date.now() - 3600_000).toISOString()
   const [found, earlier, recent] = await db.batch([
     db.select({ series: collections, postText: accountPosts.text }).from(accountPosts)
-      .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
-      .innerJoin(collections, eq(collections.id, collectionPosts.collectionId))
-      .where(and(eq(accountPosts.accountId, input.accountId), eq(accountPosts.externalId, input.externalPostId), eq(collections.ownerId, boot.ownerId))),
+      .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
+      .leftJoin(collections, and(eq(collections.id, collectionPosts.collectionId), eq(collections.ownerId, boot.ownerId)))
+      .where(and(eq(accountPosts.accountId, input.accountId), eq(accountPosts.externalId, input.externalPostId))),
     // 這個人在這則貼文之前已經被回過的紀錄
     db.select({ id: comments.id }).from(comments).where(and(
       eq(comments.accountId, input.accountId), eq(comments.senderId, input.senderId), eq(comments.externalPostId, input.externalPostId), answered,
@@ -37,8 +38,16 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
     db.select({ n: sql<number>`count(*)` }).from(comments).where(and(eq(comments.accountId, input.accountId), answered, gte(comments.createdAt, hourAgo))),
   ])
   const series = found[0]?.series
-  // 貼文不在任何系列文裡：不處理，也不記錄
-  if (!series) return
+  const record = {
+    accountId: input.accountId, kind: 'comment', postTitle: found[0]?.postText ?? '',
+    author: input.author, text: input.text, createdAt: input.at ?? nowIso(),
+    externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId,
+  }
+  if (!series) {
+    // 貼文不在任何系列文裡：Threads 照樣記下來（串文管理頁要看得到、由會員手動回），其他平台不處理也不記錄
+    if (account.platform !== 'threads') return
+    return insert({ ...record, status: 'unmatched', reason: '未歸入系列文' })
+  }
 
   const base = {
     accountId: input.accountId, collectionId: series.id, ruleName: series.name, kind: 'comment', postTitle: found[0]!.postText,
