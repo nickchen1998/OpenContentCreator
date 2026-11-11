@@ -175,3 +175,10 @@ export const collectionPosts = sqliteTable('collection_posts', {
   collectionId: integer('collection_id').notNull().references(() => collections.id, { onDelete: 'cascade' }),
   postId: integer('post_id').notNull().references(() => accountPosts.id, { onDelete: 'cascade' }),
 }, t => [primaryKey({ columns: [t.collectionId, t.postId] }), uniqueIndex('collection_posts_post_idx').on(t.postId)])
+
+// 帳號每天的粉絲數（YouTube 是訂閱數）。平台只給「現在是多少」，要自己每天記一筆才算得出增減
+export const accountStats = sqliteTable('account_stats', {
+  accountId: integer('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  day: text('day').notNull(), // 台北時間的 YYYY-MM-DD
+  followers: integer('followers').notNull(),
+}, t => [primaryKey({ columns: [t.accountId, t.day] })])

@@ -7,6 +7,8 @@ interface Status { accountId: number, lastSyncedAt: string | null, lastError: st
 const status = ref<Status[]>([])
 const replies = ref({ replied: 0, dms: 0, dmTried: 0 })
 const todo = ref({ waiting: 0, oldestWaitAt: null as string | null, failed: 0, failedIn: '', failedSeriesId: null as number | null, bySeries: {} as Record<number, number> })
+// 各帳號目前的粉絲數與這段期間的增減（紀錄還不夠久時 change 是 null）
+const followers = ref<Record<number, { followers: number, change: number | null }>>({})
 const series = ref<Series[]>([])
 const syncing = ref(false)
 const loaded = ref(false)
@@ -14,7 +16,7 @@ const { account } = useLookup()
 
 async function load() {
   const [data, list] = await Promise.all([
-    attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value }>('/api/insights', { query: { days: days.value } })),
+    attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value, followers: typeof followers.value }>('/api/insights', { query: { days: days.value } })),
     attempt(() => api<Series[]>('/api/series')),
   ])
   if (data) {
@@ -22,6 +24,7 @@ async function load() {
     status.value = data.status
     replies.value = data.replies
     todo.value = data.todo
+    followers.value = data.followers
   }
   series.value = list ?? []
   loaded.value = true
@@ -233,11 +236,18 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
         <div class="table-scroll fill scroll">
           <table class="compact">
             <thead>
-              <tr><th scope="col">帳號</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動率</th></tr>
+              <tr><th scope="col">帳號</th><th scope="col">粉絲</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動率</th></tr>
             </thead>
             <tbody>
               <tr v-for="r in summary.rows" :key="r.accountId">
                 <th scope="row"><PlatformIcon :platform="r.platform" label /><div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
+                <td>
+                  <template v-if="followers[r.accountId]">
+                    {{ fmtNum(followers[r.accountId]!.followers) }}
+                    <div v-if="followers[r.accountId]!.change != null" class="small" :class="followers[r.accountId]!.change! > 0 ? 'trend-up' : followers[r.accountId]!.change! < 0 ? 'trend-down' : 'trend-flat'">{{ followers[r.accountId]!.change! > 0 ? '▲' : followers[r.accountId]!.change! < 0 ? '▼' : '—' }} {{ fmtNum(Math.abs(followers[r.accountId]!.change!)) }}</div>
+                  </template>
+                  <template v-else>—</template>
+                </td>
                 <td>{{ r.posts }}<div class="small muted">每週 {{ perWeek(r.posts) }} 則</div></td>
                 <td>{{ fmtNum(r.views) }}</td>
                 <td>{{ rate(r.engagement, r.views) }}</td>

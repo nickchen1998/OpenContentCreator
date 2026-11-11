@@ -86,7 +86,7 @@ async function removeAccount() {
       <div v-for="a in accounts" :key="a.id" class="row between" style="gap: 12px">
         <div class="col">
           <PlatformIcon class="bold" :platform="a.platform" label />
-          <span class="small muted wrap-any">{{ a.name }}<template v-if="connectionOf(a) && connectionOf(a)!.externalName !== a.name">　·　{{ connectionOf(a)!.externalName }}</template></span>
+          <span class="small muted wrap-any">{{ a.name }}<template v-if="connectionOf(a) && connectionOf(a)!.externalName !== a.name">　·　{{ connectionOf(a)!.externalName }}</template><template v-if="connectionOf(a)?.followers != null">　·　{{ a.platform === 'youtube' ? '訂閱' : '粉絲' }} {{ fmtNum(connectionOf(a)!.followers!) }}</template></span>
         </div>
         <div class="row">
           <span v-if="connectionOf(a)" class="pill" :style="connectionOf(a)!.lastError ? 'background: var(--danger-bg); color: var(--danger)' : ''">{{ connectionOf(a)!.lastError ? '連結異常' : '已連結' }}</span>

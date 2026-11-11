@@ -65,4 +65,6 @@ export interface ConnectionInfo {
   tokenExpiresAt: string | null
   lastEventAt: string | null
   lastError: string
+  /** 最近一次記下的粉絲數（YouTube 是訂閱數）；還沒記過是 null */
+  followers: number | null
 }
