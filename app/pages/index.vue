@@ -8,7 +8,7 @@ const replies = ref({ replied: 0, dms: 0 })
 const series = ref<Series[]>([])
 const syncing = ref(false)
 const loaded = ref(false)
-const { accountLabel } = useLookup()
+const { accountLabel, account } = useLookup()
 
 async function load() {
   const [data, list] = await Promise.all([
@@ -43,9 +43,8 @@ const lastSynced = computed(() => {
 })
 const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
 // 系列文的數字是裡面所有貼文的累計；最下面一列是這段期間沒有歸入任何系列文的貼文
-const rows = computed(() => series.value.map(s => ({ ...s, totals: totalsOf(s.posts), platforms: [...new Set(s.posts.map(p => accountLabel(p.accountId).split(' · ')[0]))].join('、') })))
-const loose = computed(() => totalsOf(posts.value.filter(p => p.seriesId == null)))
-const maxViews = computed(() => Math.max(1, loose.value.views, ...rows.value.map(r => r.totals.views)))
+const rows = computed(() => series.value.map(s => ({ ...s, totals: totalsOf(s.posts), platforms: [...new Set(s.posts.map(p => account(p.accountId)?.platform).filter(Boolean))] as Platform[] })))
+const maxViews = computed(() => Math.max(1, ...rows.value.map(r => r.totals.views)))
 const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(views / maxViews.value * 100))}%` })
 </script>
 
@@ -66,7 +65,7 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
     還沒有連結帳號　<NuxtLink to="/accounts">前往連結</NuxtLink>
   </div>
   <div v-for="e in errors" :key="e.accountId" class="card" style="background: var(--danger-bg); border-color: var(--danger)" role="alert">
-    <span class="small"><b>{{ accountLabel(e.accountId) }}</b>　{{ e.lastError }}</span>
+    <span class="small pf-row"><PlatformIcon :platform="account(e.accountId)?.platform" /><b>{{ accountLabel(e.accountId) }}</b>{{ e.lastError }}</span>
   </div>
 
   <div class="stats">
@@ -92,7 +91,7 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
           <tr v-for="s in rows" :key="s.id">
             <th scope="row">
               <NuxtLink :to="`/series/${s.id}`" style="color: var(--ink)">{{ s.name }}</NuxtLink>
-              <div class="small muted" style="font-weight: 400">{{ s.platforms || '還沒有貼文' }}</div>
+              <div class="small muted pf-row" style="font-weight: 400; display: flex; margin-top: 2px"><PlatformIcon v-for="p in s.platforms" :key="p" :platform="p" :size="14" /><template v-if="!s.platforms.length">還沒有貼文</template></div>
             </th>
             <td>{{ s.posts.length }} 則</td>
             <td>{{ fmtNum(s.totals.views) }}</td>
@@ -100,15 +99,6 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
             <td>{{ rate(s.totals.engagement, s.totals.views) }}</td>
             <td>{{ fmtNum(s.received) }}</td>
             <td>{{ s.dmText ? `${fmtNum(s.dms)} 則` : '未設定' }}</td>
-          </tr>
-          <tr style="color: var(--muted)">
-            <th scope="row" style="font-weight: 400">未歸入系列文的貼文<div class="small">近 {{ days }} 天</div></th>
-            <td>{{ loose.posts }} 則</td>
-            <td>{{ fmtNum(loose.views) }}</td>
-            <td><div class="bar-track" aria-hidden="true"><div class="bar" :style="{ ...bar(loose.views), background: 'var(--line-strong)' }" /></div></td>
-            <td>{{ rate(loose.engagement, loose.views) }}</td>
-            <td>—</td>
-            <td>不回覆</td>
           </tr>
         </tbody>
       </table>
@@ -124,7 +114,7 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
         </thead>
         <tbody>
           <tr v-for="r in summary.rows" :key="r.accountId">
-            <th scope="row">{{ PLATFORMS[r.platform].label }}<div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
+            <th scope="row"><PlatformIcon :platform="r.platform" label /><div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
             <td>{{ r.posts }}</td>
             <td>{{ fmtNum(r.views) }}</td>
             <td>{{ fmtNum(r.engagement) }}</td>

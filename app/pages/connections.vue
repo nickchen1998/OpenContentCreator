@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const boot = useBoot()
-const { projectStyle, accountLabel } = useLookup()
+const { projectStyle, account } = useLookup()
 type Proposal = Post & { suggestions: string[] }
 const proposals = ref<Proposal[]>([])
 const error = ref('')
@@ -142,7 +142,7 @@ const TOOLS = [
             <span class="small bold" :style="p.conflicts.length ? 'color: var(--danger)' : 'color: var(--ok)'">{{ p.conflicts.length ? '時段衝突' : '符合規則' }}</span>
           </div>
           <NuxtLink :to="`/posts/${p.id}`" class="bold" style="font-size: 15px; color: var(--ink)">{{ p.title }}</NuxtLink>
-          <div class="small" style="color: var(--text-2)">{{ p.targets.map(t => accountLabel(t.accountId)).join('、') }} · {{ fmtAt(p.scheduledAt) }}</div>
+          <div class="small pf-row" style="color: var(--text-2)"><span v-for="t in p.targets" :key="t.id" class="pf"><PlatformIcon :platform="account(t.accountId)?.platform" :size="14" />{{ account(t.accountId)?.name ?? '已刪除的帳號' }}</span>{{ fmtAt(p.scheduledAt) }}</div>
           <div v-for="c in p.conflicts" :key="c" class="note">{{ c }}</div>
           <div v-if="p.note" class="note muted">備註：{{ p.note }}</div>
         </div>

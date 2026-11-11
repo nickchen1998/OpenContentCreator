@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const boot = useBoot()
-const { projectStyle, projectLabel, platformLabel, account } = useLookup()
+const { projectStyle, projectLabel, account } = useLookup()
 const route = useRoute()
 const weekStart = ref(mondayOf(typeof route.query.w === 'string' && DAY_RE.test(route.query.w) ? route.query.w : todayTaipei()))
 const posts = ref<Post[]>([])
@@ -55,7 +55,7 @@ function saved() {
   <div class="row between gap-lg">
     <div class="row" role="group" aria-label="平台篩選">
       <button type="button" class="chip" :aria-pressed="platformFilter === 'all'" @click="platformFilter = 'all'">全部平台</button>
-      <button v-for="k in usedPlatforms" :key="k" type="button" class="chip" :aria-pressed="platformFilter === k" @click="platformFilter = k">{{ PLATFORMS[k].short }}</button>
+      <button v-for="k in usedPlatforms" :key="k" type="button" class="chip" :aria-pressed="platformFilter === k" @click="platformFilter = k"><PlatformIcon :platform="k" short label /></button>
     </div>
     <div class="row">
       <span v-for="p in boot.projects" :key="p.id" class="tag lg" :style="projectStyle(p.id)">{{ p.name }}</span>
@@ -75,8 +75,8 @@ function saved() {
             <span class="small" :class="`status-${kind(p)}`" style="font-size: 12px">{{ KIND_LABEL[kind(p)] }}</span>
           </div>
           <NuxtLink :to="`/posts/${p.id}`" class="title">{{ p.title }}</NuxtLink>
-          <div class="row" style="gap: 4px">
-            <span v-for="t in p.targets" :key="t.id" class="pl">{{ platformLabel(t.accountId, true) }}{{ t.publishedUrl ? ' ✓' : '' }}</span>
+          <div class="row" style="gap: 8px">
+            <span v-for="t in p.targets" :key="t.id" class="pf" style="gap: 2px" :title="t.publishedUrl ? '已發文' : undefined"><PlatformIcon :platform="account(t.accountId)?.platform" :size="15" /><span v-if="t.publishedUrl" class="small bold" style="color: var(--ok)">✓<span class="sr-only">已發文</span></span></span>
           </div>
           <span class="tag" style="align-self: flex-start" :style="projectStyle(p.projectId)">{{ projectLabel(p) }}</span>
         </article>

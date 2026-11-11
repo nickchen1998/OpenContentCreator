@@ -61,7 +61,7 @@ async function save() {
       <fieldset>
         <legend>要發的帳號</legend>
         <label v-for="a in accounts" :key="a.id" class="check">
-          <input v-model="form.accountIds" type="checkbox" :value="a.id">{{ PLATFORMS[a.platform].label }}・{{ a.name }}
+          <input v-model="form.accountIds" type="checkbox" :value="a.id"><PlatformIcon :platform="a.platform" label />{{ a.name }}
         </label>
       </fieldset>
       <label class="field">備註（選填）
