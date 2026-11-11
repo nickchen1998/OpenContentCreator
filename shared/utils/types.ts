@@ -35,7 +35,8 @@ export interface Post {
 }
 export interface Asset { id: number, postId: number, filename: string, contentType: string, size: number, note: string }
 
-export type CommentStatus = 'ready' | 'sent' | 'unmatched' | 'skipped' | 'handled'
+/** own：帳號自己發的（送出的回覆、Threads 的子文），只用來組成對話，不算進留言數 */
+export type CommentStatus = 'ready' | 'sent' | 'unmatched' | 'skipped' | 'handled' | 'own'
 export interface CommentRow {
   id: number
   accountId: number
@@ -52,6 +53,9 @@ export interface CommentRow {
   externalId: string | null
   error: string
   collectionId: number | null
+  externalPostId: string
+  parentExternalId: string
+  mine: boolean
 }
 export interface ConnectionInfo {
   accountId: number

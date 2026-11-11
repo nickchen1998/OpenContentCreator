@@ -48,6 +48,11 @@
   不要改成自動送出，否則把一篇已有大量留言的貼文加進系列文會一口氣對所有人回覆加私訊。
 - 圖表用 Chart.js，包在 `app/components/BarChart.vue`（只註冊長條圖用到的部分）。互動組成的四個顏色用 dataviz 的
   `validate_palette` 驗過色盲辨識度，順序固定；不要用雙軸，數值尺度不同就拆成兩張圖。每組圖表下面留一個「資料表」。
+- **留言紀錄是「對話」**：`comments.parent_external_id` 記它回覆哪一則、`comments.mine` 記是不是帳號自己發的（送出的回覆、在平台上自己回的、
+  Threads 的子文；status 一律是 `own`，**算留言數時要排除**）。`shared/utils/conversations.ts` 的 `groupConversations` 把紀錄組成對話與子文串，
+  網頁（`ConversationList`：卡片 → 在同一個區塊內展開整串，串文管理與系列文成效頁共用，不開新頁）與伺服器共用。
+  對話最後一句是對方說的就是「待回覆」。**對話裡的後續回覆（回覆的回覆）只記錄、不自動回**，否則會跟人來回洗版；
+  Threads 回在子文底下的留言算第一層，照系列文設定自動回。手動回覆走 `/api/comments/[id]/reply`，同一則可以回不只一次。
 - 留言紀錄用 `comments.collection_id` 歸屬系列文，顯示在系列成效頁。`comments.rule_id`／`rule_name`／`kind` 是舊欄位。
 - 側欄順序：Dashboard、Series、Threads（串文管理）、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
   點進去就是成效頁（一個系列文只有一頁）。新增與設定共用 `SeriesDialog`（畫面中間的視窗），貼文清單在區塊內捲動並分頁。
@@ -63,7 +68,7 @@
 - **串文管理（`/threads`）是 Threads 專用的頁面**：Threads 發得多、大部分不屬於任何系列文，所以 Threads 是唯一「不在系列文裡也記錄留言」的平台
   （記成未回覆、不自動回，由會員在這一頁手動回或按「不用回」）；自動回覆仍然只跟著系列文。頁面上可以直接把貼文放進／移出系列文。
   不要給 Threads 加「所有貼文都自動回」的帳號層級規則。
-- Threads 輪詢會輪到所有已同步的貼文（最新 2 則每輪都看，其餘名額系列文與非系列文各半輪流，`pickForPoll`）；連結之前的舊回覆只記錄、不自動送出。回覆是先建 container 再發布，
+- Threads 輪詢用 conversation 端點一次拿整串（含回覆的回覆、自己的回覆、子文；讀不到會退回只看第一層），會輪到所有已同步的貼文（最新 2 則每輪都看，其餘名額系列文與非系列文各半輪流，`pickForPoll`）；連結之前的舊回覆只記錄、不自動送出。回覆是先建 container 再發布，
   太快發布會回「The requested resource does not exist」，`replyToComment` 會等幾秒重試。
 - 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。
 - **實測狀態（2026-11-11）**：Instagram（統一登入）已用真的帳號驗證：連結、收留言 webhook、回覆留言、留言後私訊都通，

@@ -251,6 +251,21 @@ export async function listThreadReplies(token: string, threadId: string): Promis
   return (data.data ?? []).map((r: any) => ({ id: String(r.id), username: String(r.username ?? ''), text: String(r.text ?? ''), timestamp: String(r.timestamp ?? '') }))
 }
 
+export interface ThreadNode { id: string, username: string, text: string, timestamp: string, parentId: string, mine: boolean }
+
+/**
+ * 一則 Threads 貼文底下的整串對話（所有層級攤平，舊的在前）：別人的回覆、回覆的回覆、帳號自己的回覆與接在主文下面的子文。
+ * parentId 是它回覆的那一則；直接回在主文底下的是主文的 id。
+ */
+export async function listThreadConversation(token: string, threadId: string): Promise<ThreadNode[]> {
+  const data = await call('threads', token, `/${threadId}/conversation`, { query: { fields: 'id,text,username,timestamp,replied_to,is_reply_owned_by_me', reverse: 'true', limit: '100' } })
+  const nodes: ThreadNode[] = (data.data ?? []).map((r: any) => ({
+    id: String(r.id), username: String(r.username ?? ''), text: String(r.text ?? ''), timestamp: String(r.timestamp ?? ''),
+    parentId: String(r.replied_to?.id ?? threadId), mine: r.is_reply_owned_by_me === true,
+  }))
+  return nodes.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+}
+
 // ---- 自動匯入貼文與成效（成效總覽用）----
 
 export interface RemotePostStats {

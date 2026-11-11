@@ -17,7 +17,7 @@ export async function loadSeries(uid: number): Promise<Series[]> {
       .where(eq(collections.ownerId, uid)).orderBy(desc(accountPosts.publishedAt)),
     db.select({
       collectionId: comments.collectionId,
-      received: sql<number>`count(*)`,
+      received: sql<number>`sum(case when ${comments.mine} = 0 then 1 else 0 end)`,
       replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
       // 私訊失敗時 error 會寫「留言已回覆，但私訊失敗」，那種不算送出
       dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
