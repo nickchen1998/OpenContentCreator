@@ -46,6 +46,8 @@ export function normalizePageConfig(input: unknown): PageConfig {
     textTitle: text(body.textTitle, 40),
     textBody: text(body.textBody, 1000),
     links,
+    shareTitle: text(body.shareTitle, 60),
+    shareText: text(body.shareText, 160),
   }
 }
 
@@ -132,6 +134,13 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
     series: config.seriesIds.map(id => seriesRows.find(s => s.id === id)).filter(Boolean).map(s => ({ name: s!.name, posts: s!.posts, views: s!.views })),
     textTitle: on.has('text') ? config.textTitle : '', textBody: on.has('text') ? config.textBody : '',
     links: on.has('links') ? config.links : [],
+    share: {
+      title: config.shareTitle || config.name || 'OpenContentCreator',
+      // 沒另外寫說明時用介紹，但介紹所在的區塊被關掉的話就不拿來用
+      // 預覽卡片只有一兩行，介紹裡的換行換成空白
+      text: (config.shareText || (on.has('profile') ? config.bio : '')).replace(/\s+/g, ' ').trim().slice(0, 160),
+      image: images.cover || (on.has('profile') ? images.avatar : ''),
+    },
   }
 }
 
