@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const boot = useBoot()
-const { accountLabel, group, account } = useLookup()
+const { accountLabel, account, accounts } = useLookup()
 const rules = ref<ReplyRule[]>([])
 const comments = ref<CommentRow[]>([])
 const selected = ref(0)
@@ -19,7 +19,7 @@ const sel = computed(() => comments.value.find(c => c.id === selected.value))
 // 規則
 const ruleOpen = ref(false)
 const editing = ref<ReplyRule>()
-const blank = () => ({ externalPostId: '', postLabel: '', name: '', groupId: boot.value.groups[0]?.id ?? 0, accountId: null as number | null, matchType: 'keyword' as 'keyword' | 'any', keywords: '', action: 'reply' as 'reply' | 'reply_dm', repliesText: '', dmText: '', enabled: true })
+const blank = () => ({ externalPostId: '', postLabel: '', name: '', accountId: null as number | null, matchType: 'keyword' as 'keyword' | 'any', keywords: '', action: 'reply' as 'reply' | 'reply_dm', repliesText: '', dmText: '', enabled: true })
 const form = reactive(blank())
 function openRule(rule?: ReplyRule) {
   editing.value = rule
@@ -78,7 +78,7 @@ async function removeRule() {
 async function toggle(rule: ReplyRule) {
   if (await attempt(() => api(`/api/rules/${rule.id}`, { method: 'PATCH', body: { enabled: !rule.enabled } }))) rule.enabled = !rule.enabled
 }
-const scope = (r: ReplyRule) => [group(r.groupId)?.name, r.accountId ? PLATFORMS[account(r.accountId)?.platform ?? 'facebook'].label : '全部帳號', r.externalPostId ? `「${r.postLabel.length > 14 ? `${r.postLabel.slice(0, 14)}…` : r.postLabel}」` : null].filter(Boolean).join(' · ')
+const scope = (r: ReplyRule) => [r.accountId ? accountLabel(r.accountId) : '全部帳號', r.externalPostId ? `「${r.postLabel.length > 14 ? `${r.postLabel.slice(0, 14)}…` : r.postLabel}」` : null].filter(Boolean).join(' · ')
 const actionOf = (r: ReplyRule) => (r.action === 'reply_dm' ? '回覆留言＋私訊' : '回覆留言')
 
 // 手動貼入（測試規則，或還沒連結的帳號）
@@ -86,7 +86,7 @@ const commentOpen = ref(false)
 const cform = reactive({ accountId: 0, postTitle: '', author: '', text: '' })
 function openComment() {
   error.value = ''
-  Object.assign(cform, { accountId: cform.accountId || boot.value.groups[0]?.accounts[0]?.id || 0, postTitle: '', author: '', text: '' })
+  Object.assign(cform, { accountId: cform.accountId || accounts.value[0]?.id || 0, postTitle: '', author: '', text: '' })
   commentOpen.value = true
 }
 async function saveComment() {
@@ -132,7 +132,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
   <section class="card">
     <div class="row between">
       <h2>規則</h2>
-      <button type="button" class="btn primary" :disabled="!boot.groups.length" @click="openRule()">新增規則</button>
+      <button type="button" class="btn primary" :disabled="!accounts.length" @click="openRule()">新增規則</button>
     </div>
     <div class="table-scroll">
       <table v-if="rules.length" style="min-width: 760px">
@@ -163,7 +163,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
     <section class="card" style="padding: 14px; gap: 8px" aria-label="紀錄">
       <div class="row between" style="margin: 4px 8px">
         <h2>紀錄</h2>
-        <button type="button" class="btn sm" :disabled="!boot.groups.some(g => g.accounts.length)" @click="openComment">手動貼入</button>
+        <button type="button" class="btn sm" :disabled="!accounts.length" @click="openComment">手動貼入</button>
       </div>
       <button v-for="c in shown" :key="c.id" type="button" class="list-btn" :aria-pressed="c.id === selected" @click="selected = c.id">
         <span class="row between" style="flex-wrap: nowrap">
@@ -210,19 +210,12 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
 
   <AppDialog v-model="ruleOpen" :title="editing ? '編輯規則' : '新增規則'" :error="error" @submit="saveRule">
     <label class="field">名稱<input v-model="form.name" type="text" maxlength="40" required></label>
-    <div class="row" style="align-items: flex-end">
-      <label class="field grow">群組
-        <select v-model="form.groupId" @change="form.accountId = null; pickAccount()">
-          <option v-for="g in boot.groups" :key="g.id" :value="g.id">{{ g.name }}</option>
-        </select>
-      </label>
-      <label class="field grow">帳號
-        <select v-model="form.accountId" @change="pickAccount">
-          <option :value="null">全部帳號</option>
-          <option v-for="a in group(form.groupId)?.accounts" :key="a.id" :value="a.id">{{ PLATFORMS[a.platform].label }}・{{ a.name }}</option>
-        </select>
-      </label>
-    </div>
+    <label class="field">帳號
+      <select v-model="form.accountId" @change="pickAccount">
+        <option :value="null">全部帳號</option>
+        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ PLATFORMS[a.platform].label }}・{{ a.name }}</option>
+      </select>
+    </label>
     <label v-if="form.accountId != null && remoteState !== 'error'" class="field">貼文
       <select v-model="form.externalPostId" :disabled="remoteState === 'loading'" @change="pickPost">
         <option value="">{{ remoteState === 'loading' ? '載入中…' : '全部貼文' }}</option>
@@ -252,9 +245,7 @@ const stateLabel = (c: CommentRow) => (c.error && c.status === 'ready' ? '送出
   <AppDialog v-model="commentOpen" title="手動貼入" submit-label="套用規則" :error="error" @submit="saveComment">
     <label class="field">帳號
       <select v-model="cform.accountId">
-        <template v-for="g in boot.groups" :key="g.id">
-          <option v-for="a in g.accounts" :key="a.id" :value="a.id">{{ g.name }} · {{ PLATFORMS[a.platform].label }}・{{ a.name }}</option>
-        </template>
+        <option v-for="a in accounts" :key="a.id" :value="a.id">{{ PLATFORMS[a.platform].label }}・{{ a.name }}</option>
       </select>
     </label>
     <label class="field">貼文標題（選填）<input v-model="cform.postTitle" type="text" maxlength="120"></label>

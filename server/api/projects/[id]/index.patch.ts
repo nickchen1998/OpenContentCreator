@@ -1,16 +1,14 @@
-import { eq } from 'drizzle-orm'
-import { projectGroups, projects } from '../../../database/schema'
+import { and, eq } from 'drizzle-orm'
+import { projects } from '../../../database/schema'
 
 export default defineEventHandler(async (event) => {
-  const id = idParam(event)
   const body = await bodyOf(event)
-  const boot = await loadBoot(uidOf(event))
-  if (!boot.projects.some(p => p.id === id)) throw notFound('專案')
-  const db = useDb()
-  await batchWrites([
-    db.update(projects).set({ name: str(body.name, '專案名稱', 40), color: isProjectColor(body.color) ? body.color : 'blue' }).where(eq(projects.id, id)),
-    db.delete(projectGroups).where(eq(projectGroups.projectId, id)),
-    ...insertGrants(grantsOf(boot, body.grants ?? [], id)),
-  ])
+  const [row] = await useDb().update(projects).set({
+    name: str(body.name, '專案名稱', 40),
+    color: isProjectColor(body.color) ? body.color : 'blue',
+    priority: int(body.priority ?? 1, '優先序', 1, 99),
+    canReadInsights: body.canReadInsights !== false,
+  }).where(and(eq(projects.id, idParam(event)), eq(projects.ownerId, uidOf(event)))).returning({ id: projects.id })
+  if (!row) throw notFound('專案')
   return { ok: true }
 })

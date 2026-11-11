@@ -32,7 +32,7 @@ async function reset(m: Member) {
   }
 }
 async function remove(m: Member) {
-  if (!confirm(`刪除會員「${m.username}」？他的群組、貼文、素材、專案與規則會全部刪除，無法復原。`)) return
+  if (!confirm(`刪除會員「${m.username}」？他的帳號、貼文、素材、專案與規則會全部刪除，無法復原。`)) return
   if (await attempt(() => api(`/api/users/${m.id}`, { method: 'DELETE' }), '已刪除')) await load()
 }
 async function copyCredentials() {

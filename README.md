@@ -11,26 +11,26 @@
 |---|---|
 | 排程 `/` | 週曆。自己新增規劃，或確認各專案透過 MCP 送來的提案；撞期會標紅 |
 | 貼文 `/posts/:id` | 素材上傳與下載（R2）、各平台文案、發文狀態 |
-| 成效 `/insights` | 各帳號在平台上的貼文成效（自動匯入），依帳號、群組彙整 |
+| 成效 `/insights` | 各帳號在平台上的貼文成效（自動匯入）；可以把貼文勾選成「系列」合併看成效 |
 | 設定教學 `/guide` | 各平台怎麼建立 Meta App、產生 token、設定 Webhook |
 | 自動回覆 `/replies` | 留言的固定回覆規則（關鍵字／任何、指定貼文、多句輪替、防洗版）與紀錄 |
 | MCP 連線 `/connections` | 提案佇列、專案與 token、協調規則 |
-| 帳號群組 `/groups` | 群組與底下各平台的帳號、連結平台 API |
+| 帳號 `/accounts` | 登記各平台的帳號、連結平台 API |
 | 會員管理 `/members` | 管理員建立會員、重設密碼、刪除會員 |
 
 ### MCP
 
-端點是 `/mcp`（Streamable HTTP，無狀態）。每個專案有自己的 token，只看得到被授權的群組，只能送提案：
+端點是 `/mcp`（Streamable HTTP，無狀態）。每個專案有自己的 token，看得到所屬會員的帳號與排程，只能送提案：
 
 ```bash
 claude mcp add --transport http opencontentcreator https://opencontentcreator.codeworldbagel.com/mcp --header "Authorization: Bearer <token>"
 ```
 
-工具：`list_groups`、`list_schedule`、`find_open_slots`、`check_conflicts`、`get_insights`、`propose_post`、`update_proposal`。
+工具：`list_accounts`、`list_schedule`、`find_open_slots`、`check_conflicts`、`get_insights`、`propose_post`、`update_proposal`。
 
 ### 會員
 
-帳號加密碼登入，沒有開放註冊、也沒有 OAuth。每個會員有自己的群組、貼文、素材、專案與規則，
+帳號加密碼登入，沒有開放註冊、也沒有 OAuth。每個會員有自己的帳號、貼文、素材、專案與規則，
 彼此看不到對方的資料；MCP token 屬於哪個會員，就只看得到那個會員的資料。
 
 - 平常由管理員在「會員管理」頁建立帳號，密碼由系統產生、只顯示一次；會員登入後可以自己改密碼。
@@ -53,7 +53,7 @@ claude mcp add --transport http opencontentcreator https://opencontentcreator.co
 
 唯一的情境是「有人留言 → 回覆留言，並私訊他指定的內容」。**不做私訊自動回覆**，系統也不接收使用者傳來的私訊。
 
-- 規則可以掛在群組、單一帳號，或**單一貼文**（從帳號最近的貼文挑）：不同貼文的留言可以私訊不同內容。
+- 規則可以對全部帳號、單一帳號，或**單一貼文**生效（從帳號最近的貼文挑）：不同貼文的留言可以私訊不同內容。
 - token 與 app secret 用 `NUXT_TOKEN_KEY` 加密後才存進 D1。
 - 成效不用貼連結：帳號連結後，排程每 30 分鐘輪流抓各帳號最近 25 則貼文與成效（`account_posts`），成效總覽頁也能按「立即同步」。
 - 「Instagram 登入」與 Threads 的 token 60 天到期，排程會自動換新（統一登入與粉專的 token 不會到期）。

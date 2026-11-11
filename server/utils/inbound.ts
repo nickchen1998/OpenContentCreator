@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { accounts, comments, connections, groups } from '../database/schema'
+import { accounts, comments, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
 type CommentRecord = typeof comments.$inferSelect
@@ -7,15 +7,15 @@ type CommentRecord = typeof comments.$inferSelect
 /** 某個會員名下、對應平台上某個帳號的連結（webhook 的 entry.id → connection） */
 export async function findConnection(uid: number, platform: string, externalId: string) {
   const [row] = await useDb().select({ connection: connections }).from(connections)
-    .innerJoin(accounts, eq(accounts.id, connections.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
-    .where(and(eq(groups.ownerId, uid), eq(accounts.platform, platform), eq(connections.externalId, externalId)))
+    .innerJoin(accounts, eq(accounts.id, connections.accountId))
+    .where(and(eq(accounts.ownerId, uid), eq(accounts.platform, platform), eq(connections.externalId, externalId)))
   return row?.connection
 }
 
 export async function ownedConnection(uid: number, accountId: number) {
   const [row] = await useDb().select({ connection: connections, platform: accounts.platform }).from(connections)
-    .innerJoin(accounts, eq(accounts.id, connections.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
-    .where(and(eq(groups.ownerId, uid), eq(connections.accountId, accountId)))
+    .innerJoin(accounts, eq(accounts.id, connections.accountId))
+    .where(and(eq(accounts.ownerId, uid), eq(connections.accountId, accountId)))
   return row
 }
 
@@ -65,7 +65,7 @@ interface InboundEvent {
 }
 
 /** 從 webhook（或 Threads 輪詢）收進一則留言或私訊：去重 → 跑規則 → 連結開著自動送出就直接回 */
-export async function receive(boot: Boot, platform: MetaPlatform, connection: Connection, event: InboundEvent) {
+export async function receive(boot: OwnedBoot, platform: MetaPlatform, connection: Connection, event: InboundEvent) {
   const db = useDb()
   // 自己發的（包含我們剛送出的回覆）不處理，否則會自己回自己
   const self = event.senderId === connection.externalId || event.senderId === connection.externalName

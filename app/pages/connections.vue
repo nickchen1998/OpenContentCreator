@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const boot = useBoot()
-const { projectStyle, group, accountLabel } = useLookup()
+const { projectStyle, accountLabel } = useLookup()
 type Proposal = Post & { suggestions: string[] }
 const proposals = ref<Proposal[]>([])
 const error = ref('')
@@ -40,7 +40,7 @@ async function saveTime() {
 // 專案
 const projectOpen = ref(false)
 const editing = ref<Project>()
-const pform = reactive({ name: '', color: 'blue' as ProjectColor, grants: {} as Record<number, { on: boolean, priority: number, canReadInsights: boolean }> })
+const pform = reactive({ name: '', color: 'blue' as ProjectColor, priority: 1, canReadInsights: true })
 const newToken = ref('')
 const tokenOpen = ref(false)
 function openProject(p?: Project) {
@@ -48,21 +48,19 @@ function openProject(p?: Project) {
   error.value = ''
   pform.name = p?.name ?? ''
   pform.color = p?.color ?? (Object.keys(PROJECT_COLORS) as ProjectColor[])[boot.value.projects.length % Object.keys(PROJECT_COLORS).length]!
-  pform.grants = Object.fromEntries(boot.value.groups.map((g) => {
-    const grant = p?.grants.find(x => x.groupId === g.id)
-    return [g.id, { on: !!grant, priority: grant?.priority ?? 1, canReadInsights: grant?.canReadInsights ?? true }]
-  }))
+  pform.priority = p?.priority ?? 1
+  pform.canReadInsights = p?.canReadInsights ?? true
   projectOpen.value = true
 }
 async function saveProject() {
   error.value = ''
-  const grants = Object.entries(pform.grants).filter(([, g]) => g.on).map(([groupId, g]) => ({ groupId: Number(groupId), priority: g.priority, canReadInsights: g.canReadInsights }))
+  const settings = { priority: pform.priority, canReadInsights: pform.canReadInsights }
   try {
     if (editing.value) {
-      await api(`/api/projects/${editing.value.id}`, { method: 'PATCH', body: { name: pform.name, color: pform.color, grants } })
+      await api(`/api/projects/${editing.value.id}`, { method: 'PATCH', body: { name: pform.name, color: pform.color, ...settings } })
     }
     else {
-      const { token } = await api<{ token: string }>('/api/projects', { method: 'POST', body: { name: pform.name, color: pform.color, grants } })
+      const { token } = await api<{ token: string }>('/api/projects', { method: 'POST', body: { name: pform.name, color: pform.color, ...settings } })
       showToken(token)
     }
     projectOpen.value = false
@@ -118,8 +116,8 @@ async function saveRules() {
 }
 
 const TOOLS = [
-  ['list_groups', '列出這個專案被授權的群組與其中的帳號', '唯讀'],
-  ['list_schedule', '查詢指定期間，授權群組內所有專案的排程與提案', '唯讀'],
+  ['list_accounts', '列出這個專案可以使用的帳號', '唯讀'],
+  ['list_schedule', '查詢指定期間所有專案的排程與提案', '唯讀'],
   ['find_open_slots', '依協調規則找出某些帳號的可用時段', '唯讀'],
   ['check_conflicts', '送出前先檢查某時段是否撞期', '唯讀'],
   ['get_insights', '讀取帳號或貼文的成效摘要，用來決定發文時段', '唯讀'],
@@ -142,7 +140,7 @@ const TOOLS = [
             <span class="small bold" :style="p.conflicts.length ? 'color: var(--danger)' : 'color: var(--ok)'">{{ p.conflicts.length ? '時段衝突' : '符合規則' }}</span>
           </div>
           <NuxtLink :to="`/posts/${p.id}`" class="bold" style="font-size: 15px; color: var(--ink)">{{ p.title }}</NuxtLink>
-          <div class="small" style="color: var(--text-2)">{{ group(p.groupId)?.name }} · {{ p.targets.map(t => accountLabel(t.accountId).split(' · ')[1]).join('、') }} · {{ fmtAt(p.scheduledAt) }}</div>
+          <div class="small" style="color: var(--text-2)">{{ p.targets.map(t => accountLabel(t.accountId)).join('、') }} · {{ fmtAt(p.scheduledAt) }}</div>
           <div v-for="c in p.conflicts" :key="c" class="note">{{ c }}</div>
           <div v-if="p.note" class="note muted">備註：{{ p.note }}</div>
         </div>
@@ -167,8 +165,7 @@ const TOOLS = [
         <div v-for="p in boot.projects" :key="p.id" class="row between" style="gap: 12px">
           <div class="col grow">
             <div class="row"><span class="tag lg" :style="projectStyle(p.id)">{{ p.name }}</span><code class="muted">{{ p.tokenPrefix }}</code></div>
-            <div v-for="g in p.grants" :key="g.groupId" class="small" style="color: var(--text-2)">授權群組：{{ group(g.groupId)?.name }}｜優先序 {{ g.priority }}｜讀排程、{{ g.canReadInsights ? '讀成效、' : '' }}送提案</div>
-            <div v-if="!p.grants.length" class="small muted">還沒有授權任何群組</div>
+            <div class="small" style="color: var(--text-2)">優先序 {{ p.priority }}｜讀排程、{{ p.canReadInsights ? '讀成效、' : '' }}送提案</div>
           </div>
           <button type="button" class="btn" :aria-label="`編輯 ${p.name}`" @click="openProject(p)">編輯</button>
         </div>
@@ -218,17 +215,10 @@ const TOOLS = [
         <select v-model="pform.color"><option v-for="(c, key) in PROJECT_COLORS" :key="key" :value="key">{{ c.label }}</option></select>
       </label>
     </div>
-    <fieldset>
-      <legend>授權群組</legend>
-      <div v-for="g in boot.groups" :key="g.id" class="row" style="gap: 12px">
-        <label class="check" style="flex: 1 1 120px"><input v-model="pform.grants[g.id]!.on" type="checkbox">{{ g.name }}</label>
-        <template v-if="pform.grants[g.id]!.on">
-          <label class="row small">優先序<input v-model.number="pform.grants[g.id]!.priority" type="number" min="1" max="99" style="width: 72px"></label>
-          <label class="check small"><input v-model="pform.grants[g.id]!.canReadInsights" type="checkbox">可讀成效</label>
-        </template>
-      </div>
-      <div v-if="!boot.groups.length" class="note">還沒有群組</div>
-    </fieldset>
+    <div class="row" style="align-items: flex-end">
+      <label class="field" style="width: 120px">優先序<input v-model.number="pform.priority" type="number" min="1" max="99" required></label>
+      <label class="check"><input v-model="pform.canReadInsights" type="checkbox">可讀成效</label>
+    </div>
     <template v-if="editing" #actions>
       <button type="button" class="btn danger" @click="removeProject">刪除</button>
       <button type="button" class="btn" style="margin-right: auto" @click="regenerate">重新產生 token</button>

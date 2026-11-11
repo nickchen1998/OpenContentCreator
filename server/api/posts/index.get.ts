@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
     return pending.map(p => ({
       ...p,
       suggestions: p.conflicts.length
-        ? findOpenSlots({ postId: p.id, accountIds: p.targets.map(t => t.accountId), status: 'pending', priority: priorityOf(boot, p.projectId, p.groupId) }, p.scheduledAt, slots, boot, 2)
+        ? findOpenSlots({ postId: p.id, accountIds: p.targets.map(t => t.accountId), status: 'pending', priority: priorityOf(boot, p.projectId) }, p.scheduledAt, slots, boot, 2)
         : [],
     }))
   }

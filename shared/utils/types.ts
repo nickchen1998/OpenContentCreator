@@ -1,11 +1,9 @@
 import type { Platform, ProjectColor } from './platforms'
 
-export interface Account { id: number, groupId: number, platform: Platform, name: string }
-export interface Group { id: number, name: string, topic: string, accounts: Account[] }
-export interface Grant { groupId: number, priority: number, canReadInsights: boolean }
-export interface Project { id: number, name: string, color: ProjectColor, tokenPrefix: string, grants: Grant[] }
+export interface Account { id: number, platform: Platform, name: string }
+export interface Project { id: number, name: string, color: ProjectColor, tokenPrefix: string, priority: number, canReadInsights: boolean }
 export interface Rules { minGapHours: number, maxPerDay: number, replyPerHour: number }
-export interface Boot { groups: Group[], projects: Project[], rules: Rules }
+export interface Boot { accounts: Account[], projects: Project[], rules: Rules }
 
 export type PostStatus = 'scheduled' | 'pending' | 'rejected' | 'withdrawn'
 export interface Target {
@@ -24,7 +22,6 @@ export interface Target {
 }
 export interface Post {
   id: number
-  groupId: number
   projectId: number | null
   title: string
   scheduledAt: string
@@ -41,7 +38,6 @@ export interface Asset { id: number, postId: number, filename: string, contentTy
 export interface ReplyRule {
   id: number
   name: string
-  groupId: number
   accountId: number | null
   postId: number | null
   channel: 'comment' | 'message'

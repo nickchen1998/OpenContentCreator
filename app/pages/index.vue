@@ -4,7 +4,6 @@ const { projectStyle, projectLabel, platformLabel, account } = useLookup()
 const route = useRoute()
 const weekStart = ref(mondayOf(typeof route.query.w === 'string' && DAY_RE.test(route.query.w) ? route.query.w : todayTaipei()))
 const posts = ref<Post[]>([])
-const groupFilter = ref<number | 'all'>('all')
 const platformFilter = ref<Platform | 'all'>('all')
 const formOpen = ref(false)
 const today = todayTaipei()
@@ -22,14 +21,13 @@ watch(weekStart, (w) => {
 const kind = (p: Post) => (p.conflicts.length ? 'conflict' : p.status === 'pending' ? 'pending' : 'ok')
 const KIND_LABEL = { ok: '已規劃', pending: '待確認', conflict: '時段衝突' }
 const shown = computed(() => posts.value.filter(p =>
-  (groupFilter.value === 'all' || p.groupId === groupFilter.value)
-  && (platformFilter.value === 'all' || p.targets.some(t => account(t.accountId)?.platform === platformFilter.value))))
+  platformFilter.value === 'all' || p.targets.some(t => account(t.accountId)?.platform === platformFilter.value)))
 const days = computed(() => WEEKDAYS.map((name, i) => {
   const day = addDays(weekStart.value, i)
   return { day, label: `週${name}`, date: fmtDay(day), posts: shown.value.filter(p => p.scheduledAt.startsWith(day)) }
 }))
 const count = (k: string) => shown.value.filter(p => kind(p) === k).length
-const usedPlatforms = computed(() => PLATFORM_KEYS.filter(k => boot.value.groups.some(g => g.accounts.some(a => a.platform === k))))
+const usedPlatforms = computed(() => PLATFORM_KEYS.filter(k => boot.value.accounts.some(a => a.platform === k)))
 
 function saved() {
   load()
@@ -55,10 +53,7 @@ function saved() {
   </div>
 
   <div class="row between gap-lg">
-    <div class="row" role="group" aria-label="群組與平台篩選">
-      <button type="button" class="chip" :aria-pressed="groupFilter === 'all'" @click="groupFilter = 'all'">全部群組</button>
-      <button v-for="g in boot.groups" :key="g.id" type="button" class="chip" :aria-pressed="groupFilter === g.id" @click="groupFilter = g.id">{{ g.name }}</button>
-      <span class="sep" aria-hidden="true" />
+    <div class="row" role="group" aria-label="平台篩選">
       <button type="button" class="chip" :aria-pressed="platformFilter === 'all'" @click="platformFilter = 'all'">全部平台</button>
       <button v-for="k in usedPlatforms" :key="k" type="button" class="chip" :aria-pressed="platformFilter === k" @click="platformFilter = k">{{ PLATFORMS[k].short }}</button>
     </div>

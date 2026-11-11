@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { users } from '../../../database/schema'
 
-// 刪除會員與他的所有資料（群組、貼文、素材、專案、規則）。不能刪自己，也不能刪管理員
+// 刪除會員與他的所有資料（帳號、貼文、素材、專案、規則）。不能刪自己，也不能刪管理員
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
   const id = idParam(event)

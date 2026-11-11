@@ -12,11 +12,14 @@
 
 ## 會員與資料隔離（最重要）
 
-- 每個會員的資料互相獨立。擁有者只記在 `groups.owner_id` 與 `projects.owner_id`，其他表都經由群組歸屬到會員。
-- **新的端點一定要限定在登入的會員身上**：`uidOf(event)` 取會員 id；群組／帳號／專案的 id 要在 `loadBoot(uid)`
-  裡才算數；以 id 存取其他資料用 `server/utils/owned.ts` 的 `ownedPost` / `ownedAsset` / `ownedTarget` /
-  `ownedRule` / `ownedComment` / `ownedAccount`。別人的資料一律回 404。
-- `owner_id` 的外鍵沒有 cascade（SQLite 的 ALTER 加不上去），刪會員要走 `deleteUserData`。
+- 每個會員的資料互相獨立，直接用 `owner_id` 歸屬：`accounts`、`posts`、`reply_rules`、`projects`、`collections`。
+  其他表經由這幾張表歸屬到會員（`comments`／`connections`／`account_posts` → `accounts`；`post_targets`／`assets` → `posts`）。
+- **沒有「帳號群組」這個概念**（使用者覺得難懂，2026-11-11 連資料表一起移除）。不要再加回任何把帳號分組的中間層；
+  要把貼文歸類看成效用的是「系列」（`collections`）。
+- **新的端點一定要限定在登入的會員身上**：`uidOf(event)` 取會員 id；帳號／專案的 id 要在 `loadBoot(uid)` 裡才算數；
+  以 id 存取其他資料用 `server/utils/owned.ts` 的 `ownedPost` / `ownedAsset` / `ownedTarget` / `ownedRule` / `ownedComment` /
+  `ownedAccount`。別人的資料一律回 404。`loadBoot` 回傳的 `OwnedBoot.ownerId` 用來在查詢裡限定會員。
+- `projects.owner_id` 是較早加的欄位，沒有 cascade，刪會員要走 `deleteUserData`；其他表刪會員時會自動跟著刪。
 - 管理員功能用 `requireAdmin(event)`。沒有開放註冊，也不做 OAuth（使用者的決定）。
 - 改了這一帶之後，用兩個本機帳號互打一次 API 確認擋得住。
 
@@ -60,7 +63,12 @@
 - 新的 server route 要放在 `/api/*` 或 `/mcp` 底下，否則會被靜態資產接走。頁面路徑不能叫 `/mcp`。
 - `/api/*` 由 `server/middleware/auth.ts` 統一要求登入（`/api/auth/login` 與 `/api/hooks/*` 除外），每個請求重新查一次會員；`/mcp` 自己驗專案 token。
 - 密碼雜湊是 PBKDF2 20,000 次（Free 方案的 CPU 上限），`server/utils/passwords.ts` 與 `scripts/set-user.mjs` 要用同一種格式。
-- drizzle-kit 在非互動環境遇到「是改名還是新增」會直接失敗：一次 migration 不要同時刪表又加表。
+- drizzle-kit 在非互動環境遇到「是改名還是新增」會直接失敗：一次 migration 不要同時刪表又加表。真的避不開時用 pty 代答
+  （第一個選項是「新增」），產出的 snapshot 可以留、**SQL 要自己重寫**。
+- **要重建有子表的資料表時（SQLite 不能 DROP 有外鍵的欄位），不要用 drizzle-kit 產生的 SQL**：D1 不能關掉外鍵檢查，
+  `DROP TABLE` 會觸發子表的 ON DELETE CASCADE 把資料刪光。照 `0008_remove_groups.sql` 的做法：子表先備份到暫存表、
+  一次只換一張表（子表指向的父表隨時都要存在）、換完用 `INSERT OR IGNORE` 還原。上正式環境前先 `wrangler d1 export`
+  備份到 `.backups/`（已 gitignore），並在本機有資料的 D1 演練、比對每張表的筆數。
 - Workers Free 方案每個請求 10ms CPU、50 次 D1 查詢：多筆寫入用 `db.batch()`（`batchWrites`），
   共用資料用 `loadBoot()` 一趟讀完。
 - 撞期判斷集中在 `server/utils/coordination.ts`，網頁與 MCP 共用；衝突是讀取時算的，不存進資料庫。

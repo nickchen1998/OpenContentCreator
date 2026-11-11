@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
-import { accounts, comments, groups, replyRules } from '../database/schema'
+import { accounts, comments, replyRules } from '../database/schema'
 
 export interface Incoming {
   accountId: number
@@ -19,15 +19,15 @@ export interface Incoming {
  * 防洗版：同一個人在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
  * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
-export async function processComment(boot: Boot, input: Incoming) {
+export async function processComment(boot: OwnedBoot, input: Incoming) {
   const db = useDb()
-  const account = allAccounts(boot).find(a => a.id === input.accountId)
+  const account = boot.accounts.find(a => a.id === input.accountId)
   if (!account) throw bad('找不到這個帳號')
   const who = input.senderId ? eq(comments.senderId, input.senderId) : eq(comments.author, input.author)
   const answered = inArray(comments.status, ['ready', 'sent'])
   const hourAgo = new Date(Date.now() - 3600_000).toISOString()
   const [rules, earlier, recent] = await db.batch([
-    db.select().from(replyRules).where(and(eq(replyRules.groupId, account.groupId), eq(replyRules.enabled, true), eq(replyRules.channel, input.kind))),
+    db.select().from(replyRules).where(and(eq(replyRules.ownerId, boot.ownerId), eq(replyRules.enabled, true))),
     // 這個人之前已經被回過的紀錄
     db.select({ ruleId: comments.ruleId }).from(comments).where(and(
       eq(comments.accountId, input.accountId), who, answered,
@@ -63,7 +63,7 @@ export async function processComment(boot: Boot, input: Incoming) {
     return insert({ ...matched, status: 'skipped', reason: `${hit}，但這個帳號這一小時已達上限 ${boot.rules.replyPerHour} 則` })
   }
   const index = rule.cursor % rule.replies.length
-  // 留言後私訊只有 Instagram 與 Facebook 做得到；規則掛在整個群組時，其他平台的帳號只回留言
+  // 留言後私訊只有 Instagram 與 Facebook 做得到；規則對全部帳號生效時，其他平台的帳號只回留言
   const withDm = rule.action === 'reply_dm' && (account.platform === 'instagram' || account.platform === 'facebook')
   const [, created] = await db.batch([
     db.update(replyRules).set({ cursor: rule.cursor + 1 }).where(eq(replyRules.id, rule.id)),
@@ -87,7 +87,7 @@ async function insert(values: typeof comments.$inferInsert) {
 
 export async function listComments(uid: number) {
   const rows = await useDb().select({ comment: comments }).from(comments)
-    .innerJoin(accounts, eq(accounts.id, comments.accountId)).innerJoin(groups, eq(groups.id, accounts.groupId))
-    .where(eq(groups.ownerId, uid)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(100)
+    .innerJoin(accounts, eq(accounts.id, comments.accountId))
+    .where(eq(accounts.ownerId, uid)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(100)
   return rows.map(r => r.comment)
 }
