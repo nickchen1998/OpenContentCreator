@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 儀表板：先看今天要處理什麼，再看這段期間的成效（跟前一段期間比）、哪些貼文表現好、各系列文與各帳號
+// 儀表板：最上面一行是待回覆的對話＋這段期間的成效（跟前一段期間比）、哪些貼文表現好、各系列文與各帳號
 const boot = useBoot()
 const days = ref(28)
 const allPosts = ref<InsightPost[]>([]) // 兩倍期間的貼文：後半是這個期間，前半拿來比較
@@ -8,17 +8,14 @@ const status = ref<Status[]>([])
 const replies = ref({ replied: 0, dms: 0, dmTried: 0 })
 const todo = ref({ waiting: 0, oldestWaitAt: null as string | null, failed: 0, failedIn: '', failedSeriesId: null as number | null, bySeries: {} as Record<number, number> })
 const series = ref<Series[]>([])
-const today = ref<Post[]>([])
 const syncing = ref(false)
 const loaded = ref(false)
 const { account } = useLookup()
 
 async function load() {
-  const day = todayTaipei()
-  const [data, list, scheduled] = await Promise.all([
+  const [data, list] = await Promise.all([
     attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value }>('/api/insights', { query: { days: days.value } })),
     attempt(() => api<Series[]>('/api/series')),
-    attempt(() => api<Post[]>('/api/posts', { query: { from: day, to: day } })),
   ])
   if (data) {
     allPosts.value = data.posts
@@ -27,7 +24,6 @@ async function load() {
     todo.value = data.todo
   }
   series.value = list ?? []
-  today.value = (scheduled ?? []).filter(p => p.status === 'scheduled')
   loaded.value = true
 }
 watch(days, load, { immediate: true })
@@ -54,19 +50,7 @@ const waitedFor = computed(() => {
   const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(todo.value.oldestWaitAt)) / 60000))
   return minutes < 60 ? `${minutes} 分鐘` : minutes < 1440 ? `${Math.floor(minutes / 60)} 小時` : `${Math.floor(minutes / 1440)} 天`
 })
-const nextPost = computed(() => {
-  const now = nowTaipei()
-  const next = today.value.filter(p => p.scheduledAt >= now).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0]
-  return next ? `下一則 ${next.scheduledAt.slice(11)}` : today.value.length ? '今天的都過了' : ''
-})
 const linkErrors = computed(() => status.value.filter(s => s.lastError))
-const tokenNote = computed(() => {
-  const soonest = status.value.filter(s => s.tokenExpiresAt).sort((a, b) => a.tokenExpiresAt!.localeCompare(b.tokenExpiresAt!))[0]
-  if (!soonest) return ''
-  const left = Math.ceil((Date.parse(soonest.tokenExpiresAt!) - Date.now()) / 86400_000)
-  const platform = account(soonest.accountId)?.platform
-  return `${platform ? PLATFORMS[platform].label : ''} 權杖 ${left} 天後到期`
-})
 
 // ---- 這個期間 vs 前一個期間（各自是「那段期間發的貼文」的累計數字）----
 const since = computed(() => new Date(Date.now() - days.value * 86400_000).toISOString())
@@ -87,7 +71,6 @@ const kpis = computed(() => {
     { label: '互動率', value: rate(now.engagement, now.views), delta: prev.views && now.views ? trend(rateDiff, `${Math.abs(rateDiff * 100).toFixed(1)} 個百分點`) : none },
     { label: '留言', value: `${fmtNum(sum(posts.value))} 則`, delta: prev.posts ? trend(commentsDiff, `${fmtNum(Math.abs(commentsDiff))} 則`) : none },
     { label: '私訊送出', value: `${fmtNum(replies.value.dms)} 則`, delta: { text: replies.value.dmTried ? `送達率 ${Math.round(replies.value.dms / replies.value.dmTried * 100)}%` : '　', dir: 'flat' } },
-    { label: '發文', value: `${fmtNum(now.posts)} 則`, delta: { text: `前 ${days.value} 天 ${fmtNum(prev.posts)} 則`, dir: 'flat' } },
   ]
 })
 
@@ -160,6 +143,8 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
       <button type="button" class="chip" :aria-pressed="days === 90" @click="days = 90">近 90 天</button>
     </div>
     <div class="row">
+      <NuxtLink v-if="todo.failed" :to="todo.failedSeriesId ? `/series/${todo.failedSeriesId}` : '/feed'" class="alert-chip">{{ todo.failed }} 則送出失敗</NuxtLink>
+      <NuxtLink v-if="linkErrors.length" to="/accounts" class="alert-chip" :title="linkErrors[0]?.lastError">{{ linkErrors.length }} 個連結異常</NuxtLink>
       <span v-if="lastSynced" class="small muted">更新於 {{ lastSynced }}</span>
       <button type="button" class="btn" :disabled="syncing || !connected" @click="sync">{{ syncing ? '同步中…' : '立即同步' }}</button>
     </div>
@@ -169,26 +154,12 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
     還沒有連結帳號　<NuxtLink to="/accounts">前往連結</NuxtLink>
   </div>
 
-  <div class="todo" aria-label="今天要處理">
-    <NuxtLink to="/feed?filter=pending" class="todo-card" :class="{ warn: todo.waiting }">
-      <span class="small bold">待回覆的對話</span><b>{{ fmtNum(todo.waiting) }} 串</b>
-      <span class="small">{{ waitedFor ? `最久的等了 ${waitedFor}` : '都回完了' }}</span>
-    </NuxtLink>
-    <NuxtLink :to="todo.failedSeriesId ? `/series/${todo.failedSeriesId}` : '/feed'" class="todo-card" :class="{ danger: todo.failed }">
-      <span class="small bold">送出失敗</span><b>{{ fmtNum(todo.failed) }} 則</b>
-      <span class="small">{{ todo.failed ? todo.failedIn || '點進去重送' : '沒有失敗的' }}</span>
-    </NuxtLink>
-    <NuxtLink to="/schedule" class="todo-card">
-      <span class="small bold">今天的排程</span><b>{{ fmtNum(today.length) }} 則</b>
-      <span class="small">{{ nextPost || '今天沒有排程' }}</span>
-    </NuxtLink>
-    <NuxtLink to="/accounts" class="todo-card" :class="{ danger: linkErrors.length }">
-      <span class="small bold">帳號連結</span><b>{{ linkErrors.length ? `${linkErrors.length} 個異常` : `${status.length} 個正常` }}</b>
-      <span class="small todo-note" :title="linkErrors[0]?.lastError">{{ linkErrors[0]?.lastError || tokenNote || '　' }}</span>
-    </NuxtLink>
-  </div>
-
+  <!-- 一行五格：第一格是要動手的事，後面四格是這段期間的成效。送出失敗、連結異常平常不占位置，有狀況才出現在上面那一列 -->
   <div class="stats">
+    <NuxtLink to="/feed?filter=pending" class="stat stat-link" :class="{ warn: todo.waiting }">
+      <span class="small muted">待回覆的對話</span><b>{{ fmtNum(todo.waiting) }} 串</b>
+      <span class="small muted">{{ waitedFor ? `最久的等了 ${waitedFor}` : '都回完了' }}</span>
+    </NuxtLink>
     <div v-for="k in kpis" :key="k.label" class="stat">
       <span class="small muted">{{ k.label }}</span><b>{{ k.value }}</b>
       <span class="small" :class="`trend-${k.delta.dir}`">{{ k.delta.text }}</span>
