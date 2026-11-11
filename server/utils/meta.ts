@@ -293,3 +293,26 @@ export async function fetchInsights(platform: MetaPlatform, token: string, postI
     .catch(() => call(platform, token, `/${postId}/insights`, { query: { metric: 'post_impressions' } }).then(insightMap))
   return { views: num(m.post_media_view ?? m.post_impressions) }
 }
+
+// ---- 補抓既有留言 ----
+
+export interface RemoteComment { id: string, senderId: string, author: string, text: string, at: string }
+
+/** 一則貼文底下的留言（最上層的，新的在前）。Threads 走 listThreadReplies，不在這裡 */
+export async function listPostComments(platform: 'instagram' | 'facebook', token: string, postId: string, limit = 50): Promise<RemoteComment[]> {
+  const iso = (v: unknown) => {
+    const d = new Date(String(v ?? ''))
+    return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+  }
+  if (platform === 'instagram') {
+    const data = await call(platform, token, `/${postId}/comments`, { query: { fields: 'id,text,username,timestamp,from', limit: String(limit) } })
+    return (data.data ?? []).map((c: any) => ({
+      id: String(c.id), senderId: String(c.from?.id ?? c.username ?? ''), author: c.username || c.from?.username ? `@${c.username ?? c.from.username}` : '（未知）',
+      text: String(c.text ?? ''), at: iso(c.timestamp),
+    }))
+  }
+  const data = await call(platform, token, `/${postId}/comments`, { query: { fields: 'id,message,from,created_time', order: 'reverse_chronological', limit: String(limit) } })
+  return (data.data ?? []).map((c: any) => ({
+    id: String(c.id), senderId: String(c.from?.id ?? ''), author: String(c.from?.name ?? '（未知）'), text: String(c.message ?? ''), at: iso(c.created_time),
+  }))
+}

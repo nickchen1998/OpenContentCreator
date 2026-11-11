@@ -1,12 +1,12 @@
 import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm'
-import { accountPosts, accounts, comments, connections } from '../database/schema'
+import { accountPosts, accounts, collectionPosts, comments, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
 /**
  * 同步一個帳號的貼文與成效：列出最近的貼文（1 個請求，按讚與留言數跟著回來），再替最久沒更新的幾則抓 insight
  * （觀看、分享、收藏；每則 1–2 個請求）。insightBudget 是這次最多替幾則貼文抓 insight，呼叫端用它控制請求數。
  */
-export async function syncAccountPosts(platform: MetaPlatform, connection: Connection, insightBudget: number) {
+export async function syncAccountPosts(platform: MetaPlatform, connection: Connection, insightBudget: number, ownerId?: number) {
   const db = useDb()
   const now = nowIso()
   try {
@@ -39,7 +39,9 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
       return db.insert(accountPosts).values({ accountId: connection.accountId, externalId: post.id, ...base })
         .onConflictDoUpdate({ target: [accountPosts.accountId, accountPosts.externalId], set: base })
     }))
-    const lastError = insightError ? `讀不到觀看數等成效：${insightError}`.slice(0, 300) : ''
+    // 系列文裡的貼文順便補抓既有留言（只記錄，不自動回覆）
+    const commentError = ownerId != null && platform !== 'threads' ? await importSeriesComments(platform, connection, token, ownerId) : ''
+    const lastError = (insightError ? `讀不到觀看數等成效：${insightError}` : commentError).slice(0, 300)
     await db.update(connections).set({ lastSyncedAt: now, lastError }).where(eq(connections.id, connection.id))
     return { posts: remote.length, error: lastError }
   }
@@ -50,14 +52,53 @@ export async function syncAccountPosts(platform: MetaPlatform, connection: Conne
   }
 }
 
+/**
+ * 補抓系列文裡各貼文的既有留言：系列文建立之前就有的留言、或即時通知漏掉的。
+ * 跑一樣的規則，但**不自動送出**：命中的會是「待送出」，由會員自己決定要不要回（否則把一篇有上百則留言的貼文
+ * 加進系列文，會一口氣對所有人回覆加私訊）。每次最多看 4 則貼文、收 12 則新留言，其餘下次同步再收。
+ */
+async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number) {
+  const db = useDb()
+  try {
+    const [targets, seenRows] = await db.batch([
+      db.select({ externalId: accountPosts.externalId }).from(accountPosts)
+        .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
+        .where(eq(accountPosts.accountId, connection.accountId)).orderBy(sql`${accountPosts.publishedAt} desc`).limit(4),
+      db.select({ externalId: comments.externalId }).from(comments)
+        .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId))).orderBy(sql`${comments.id} desc`).limit(1000),
+    ])
+    if (!targets.length) return ''
+    const seen = new Set(seenRows.map(r => r.externalId))
+    let boot: OwnedBoot | undefined
+    let imported = 0
+    for (const target of targets) {
+      const remote = await listPostComments(platform, token, target.externalId)
+      // 自己的留言（包含我們送出的回覆）不算；舊的先處理，「同一個人只回一次」才會算在他最早的那則上
+      const fresh = remote.filter(c => c.text.trim() && !seen.has(c.id) && c.senderId !== connection.externalId && c.author !== `@${connection.externalName}`).reverse()
+      for (const c of fresh) {
+        if (imported >= 12) return ''
+        boot ??= await loadBoot(ownerId)
+        await processComment(boot, { accountId: connection.accountId, externalId: c.id, externalPostId: target.externalId, senderId: c.senderId, author: c.author, text: c.text, at: c.at })
+          .catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
+        imported += 1
+      }
+    }
+    return ''
+  }
+  catch (e) {
+    return `讀不到留言：${(e as Error).message}`
+  }
+}
+
 /** 排程：同步最久沒輪到的幾個帳號。2 個帳號 × (1 + 8 則 × 最多 2 個請求) 在 Free 方案的 50 個對外請求以內 */
 export async function syncStaleAccounts(maxConnections = 2) {
-  const due = await useDb().select({ connection: connections, platform: accounts.platform }).from(connections)
+  const due = await useDb().select({ connection: connections, platform: accounts.platform, ownerId: accounts.ownerId }).from(connections)
     .innerJoin(accounts, eq(accounts.id, connections.accountId))
     .orderBy(sql`${connections.lastSyncedAt} is not null`, asc(connections.lastSyncedAt))
     .limit(maxConnections)
-  for (const { connection, platform } of due) {
-    if (isMetaPlatform(platform)) await syncAccountPosts(platform, connection, 8)
+  for (const { connection, platform, ownerId } of due) {
+    // 每則貼文的 insight 1–2 個請求、補抓留言每則貼文 1 個，兩個帳號合計壓在 50 個以內
+    if (isMetaPlatform(platform)) await syncAccountPosts(platform, connection, 6, ownerId)
   }
 }
 

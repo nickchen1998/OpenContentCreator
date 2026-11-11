@@ -9,6 +9,8 @@ export interface Incoming {
   externalId: string
   externalPostId: string
   senderId: string
+  /** 留言在平台上的時間。補抓舊留言時帶進來，紀錄才會排在正確的位置，也不會吃掉「每小時回覆上限」 */
+  at?: string
 }
 
 /**
@@ -40,7 +42,7 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
 
   const base = {
     accountId: input.accountId, collectionId: series.id, ruleName: series.name, kind: 'comment', postTitle: found[0]!.postText,
-    author: input.author, text: input.text, createdAt: nowIso(),
+    author: input.author, text: input.text, createdAt: input.at ?? nowIso(),
     externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId,
   }
   const text = input.text.toLowerCase()
