@@ -7,6 +7,16 @@ const comments = ref<CommentRow[]>([])
 const missing = ref(false)
 const settingsOpen = ref(false)
 const waitingOnly = ref(false)
+const syncing = ref(false)
+// 只同步這個系列文裡的貼文（成效數字與留言）。一次最多 8 則，貼文更多時會提示再按一次
+async function sync() {
+  syncing.value = true
+  const r = await attempt(() => api<{ synced: number, total: number, errors: string[] }>(`/api/series/${id}/sync`, { method: 'POST' }))
+  syncing.value = false
+  if (!r) return
+  notify(r.errors.length ? r.errors.join('；') : r.total > r.synced ? `已同步 ${r.synced}／${r.total} 則，再按一次繼續` : '已同步')
+  await load(true)
+}
 const backToList = () => navigateTo('/series')
 
 async function load(quiet = false) {
@@ -70,7 +80,10 @@ const partsSummary = computed(() => `各貼文互動組成：${(series.value?.po
         <NuxtLink to="/series" class="btn-text" style="padding-left: 0">← 系列文管理</NuxtLink>
         <h1 class="wrap-any">{{ series.name }}</h1>
       </div>
-      <button type="button" class="btn" @click="settingsOpen = true">設定系列文</button>
+      <div class="row">
+        <button type="button" class="btn" :disabled="syncing || !series.posts.length" @click="sync">{{ syncing ? '同步中…' : '立即同步' }}</button>
+        <button type="button" class="btn" @click="settingsOpen = true">設定系列文</button>
+      </div>
     </div>
 
     <div class="stats">
