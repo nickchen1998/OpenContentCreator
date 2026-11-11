@@ -3,6 +3,6 @@ export default defineEventHandler(async (event) => {
   const uid = uidOf(event)
   const requested = Number(getQuery(event).days)
   const days = [7, 28, 90].includes(requested) ? requested : 28
-  const [insights, replies, todo] = await Promise.all([loadInsights(uid, days * 2), replyTotals(uid, days), loadTodo(uid)])
-  return { ...insights, replies, todo }
+  const [insights, replies, todo, followers] = await Promise.all([loadInsights(uid, days * 2), replyTotals(uid, days), loadTodo(uid), loadFollowers(uid, days)])
+  return { ...insights, replies, todo, followers }
 })

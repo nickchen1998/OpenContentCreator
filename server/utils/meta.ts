@@ -107,6 +107,9 @@ export async function pageTokenFromUserToken(userToken: string, appId: string, a
   return { token: picked.access_token, externalId: String(picked.id), externalName: picked.name }
 }
 
+/** 單純的 GET，給這個檔案以外、需要自己組查詢的地方用（例如粉絲數） */
+export const metaGet = (platform: MetaPlatform, token: string, path: string, query: Record<string, string>) => call(platform, token, path, { query })
+
 /** 這個 token 是不是個人的用戶權杖（Page token 沒有 /me/accounts） */
 export const isUserToken = (token: string) => call('facebook', token, '/me/accounts', { query: { limit: '1' } }).then(() => true, () => false)
 

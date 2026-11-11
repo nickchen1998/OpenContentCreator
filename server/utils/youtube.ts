@@ -126,6 +126,13 @@ export async function youtubeVideos(refreshToken: string, channelId: string, lim
   }))
 }
 
+/** 頻道的訂閱數（1 單位）。API 只給三位有效數字；頻道隱藏訂閱數時回 null */
+export async function youtubeSubscribers(refreshToken: string, channelId: string) {
+  const data = await call(refreshToken, '/channels', { query: { part: 'statistics', id: channelId } })
+  const stats = data.items?.[0]?.statistics
+  return !stats || stats.hiddenSubscriberCount ? null : count(stats.subscriberCount)
+}
+
 /** 一支影片目前的數字（1 單位）。YouTube 不提供分享與收藏數 */
 export async function youtubeMetrics(refreshToken: string, videoId: string) {
   const data = await call(refreshToken, '/videos', { query: { part: 'statistics', id: videoId } })
