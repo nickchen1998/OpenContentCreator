@@ -68,7 +68,7 @@ async function copy(text: string) {
         <input v-model="form.appId" type="text" inputmode="numeric" autocomplete="off" :required="!connection">
       </label>
       <label v-if="needsWebhook" class="field">{{ account.platform === 'instagram' ? 'Instagram 應用程式密鑰' : '應用程式密鑰（App secret）' }}
-        <input v-model="form.appSecret" type="password" autocomplete="off" required>
+        <input v-model="form.appSecret" type="password" autocomplete="off" :required="!connection" :placeholder="connection ? '留空 = 不更換' : ''">
       </label>
 
       <template v-if="needsWebhook && hook">

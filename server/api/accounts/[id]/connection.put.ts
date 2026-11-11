@@ -20,8 +20,11 @@ export default defineEventHandler(async (event) => {
     return { externalId: existing.connection.externalId, externalName: existing.connection.externalName, subscribeError: '' }
   }
   let token = str(body.token, 'Access token', 1000).replace(/\s+/g, '')
-  // Threads 不走 webhook，不需要 app secret
-  const appSecret = hasWebhook(account.platform) ? str(body.appSecret, 'App secret', 100) : ''
+  // 已連結的帳號換 token 時密鑰可以留空（沿用原本的）。Threads 不走 webhook，不需要密鑰
+  const previous = await ownedConnection(uid, accountId)
+  const givenSecret = str(body.appSecret, '密鑰', 100, false)
+  const appSecret = !hasWebhook(account.platform) ? '' : givenSecret || (previous ? await unseal(previous.connection.appSecretEnc) : '')
+  if (hasWebhook(account.platform) && !appSecret) throw bad('請填寫密鑰')
   if (hasWebhook(account.platform) && !/^[0-9a-f]{32}$/i.test(appSecret)) throw bad('密鑰是 32 個字元的英數字，請按「顯示」後再複製')
 
   let identity
