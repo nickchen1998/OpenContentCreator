@@ -14,8 +14,11 @@ const draft = ref('')
 const busy = ref(false)
 
 const countIn = (index: number) => grouped.value.conversations.filter(c => c.part === index).length
-const filtered = computed(() => grouped.value.conversations.filter(c =>
-  part.value < 0 || c.part === part.value))
+// 待回覆的排在最前面（各自仍然是最近有動靜的在前），不然會被已回覆的擠到後面幾頁
+const filtered = computed(() => {
+  const list = grouped.value.conversations.filter(c => part.value < 0 || c.part === part.value)
+  return [...list.filter(c => c.waiting), ...list.filter(c => !c.waiting)]
+})
 const PAGE_SIZE = 8
 const page = ref(1)
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
@@ -68,9 +71,29 @@ const contextOf = computed(() => {
   return conv.part ? parts.value[conv.part - 1]?.text ?? '' : conv.root.postTitle
 })
 
+// 常用回覆：這串對話所屬系列文的回覆句＋自己最常手動回的幾句。同一個系列文只問一次
+const quick = ref<string[]>([])
+let quickFor: number | null | undefined
+async function loadQuick(seriesId: number | null) {
+  if (quickFor === seriesId) return
+  quickFor = seriesId
+  quick.value = (await api<{ replies: string[] }>('/api/comments/quick', { query: { seriesId: seriesId ?? '' } }).catch(() => ({ replies: [] }))).replies
+}
+const waitingCount = computed(() => grouped.value.conversations.filter(c => c.waiting).length)
+
 function open(key: string) {
   openKey.value = key
   draft.value = ''
+  const conv = grouped.value.conversations.find(c => c.key === key)
+  if (conv) loadQuick(conv.root.collectionId)
+}
+/** 處理完一串之後：跳到清單上下一串待回覆的；都處理完就回到卡片清單 */
+function advance(doneKey: string) {
+  const list = filtered.value
+  const at = list.findIndex(c => c.key === doneKey)
+  const next = [...list.slice(at + 1), ...list.slice(0, Math.max(at, 0))].find(c => c.waiting && c.key !== doneKey)
+  if (next) open(next.key)
+  else openKey.value = ''
 }
 async function run(fn: () => Promise<unknown>, done?: string) {
   busy.value = true
@@ -83,13 +106,19 @@ async function run(fn: () => Promise<unknown>, done?: string) {
 async function reply() {
   const target = replyTo.value
   if (!target || !draft.value.trim()) return
-  if (await run(() => api(`/api/comments/${target.id}/reply`, { method: 'POST', body: { text: draft.value.trim() } }), '已回覆')) draft.value = ''
+  const key = openKey.value
+  // 手動回完如果清單上還有別串在等，就接著處理下一串
+  if (await run(() => api(`/api/comments/${target.id}/reply`, { method: 'POST', body: { text: draft.value.trim() } }), '已回覆')) {
+    quickFor = undefined
+    advance(key)
+  }
 }
 const resend = (row: CommentRow) => run(() => api(`/api/comments/${row.id}/send`, { method: 'POST' }), '已送出')
 async function dismiss() {
   const last = current.value?.last
   if (!last || last.mine) return
-  if (await run(() => api(`/api/comments/${last.id}`, { method: 'PATCH', body: { status: 'handled' } }))) openKey.value = ''
+  const key = openKey.value
+  if (await run(() => api(`/api/comments/${last.id}`, { method: 'PATCH', body: { status: 'handled' } }))) advance(key)
 }
 </script>
 
@@ -128,7 +157,7 @@ async function dismiss() {
   <div v-else class="conv">
     <div class="row between">
       <button type="button" class="btn sm" @click="openKey = ''">← 全部對話</button>
-      <span class="small muted"><template v-if="parts.length">回在{{ whereOf(current.part) }} · </template>{{ messages.length }} 則對話</span>
+      <span class="small muted"><template v-if="parts.length">回在{{ whereOf(current.part) }} · </template>還有 {{ waitingCount }} 串待回覆</span>
     </div>
     <h3 class="pf-row" style="gap: 6px"><PlatformIcon v-if="showPlatform" :platform="account(current.root.accountId)?.platform" :size="16" />{{ current.root.author }}</h3>
     <p v-if="contextOf" class="conv-context wrap-any">{{ contextOf }}</p>
@@ -152,6 +181,9 @@ async function dismiss() {
       </li>
     </ol>
     <form v-if="replyTo" class="col shrink" style="gap: 8px" @submit.prevent="reply">
+      <div v-if="quick.length" class="quick-replies" role="group" aria-label="常用回覆">
+        <button v-for="q in quick" :key="q" type="button" class="chip" :title="q" @click="draft = q">{{ q.length > 14 ? `${q.slice(0, 14)}…` : q }}</button>
+      </div>
       <label class="field">回覆 {{ replyTo.author }}
         <textarea v-model="draft" rows="2" maxlength="500" required style="resize: none" />
       </label>

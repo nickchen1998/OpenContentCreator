@@ -55,3 +55,31 @@ export async function ownedFeedPost(uid: number, id: number) {
 export const loadPostReplies = (post: { accountId: number, externalId: string }) =>
   useDb().select().from(comments).where(and(eq(comments.accountId, post.accountId), eq(comments.externalPostId, post.externalId)))
     .orderBy(desc(comments.createdAt), desc(comments.id)).limit(500)
+
+/**
+ * 儀表板最上面「今天要處理」用的數字：有幾串對話在等回覆、等最久的是什麼時候、有幾則送出失敗，以及各系列文各有幾串在等。
+ * 「最後一句是誰說的」用 SQL 算不出來，所以拿組對話需要的欄位回來在這裡算。
+ */
+export async function loadTodo(uid: number) {
+  const db = useDb()
+  const [rows, names] = await db.batch([
+    db.select({
+      id: comments.id, accountId: comments.accountId, externalId: comments.externalId, externalPostId: comments.externalPostId,
+      parentExternalId: comments.parentExternalId, mine: comments.mine, status: comments.status, createdAt: comments.createdAt,
+      collectionId: comments.collectionId, error: comments.error,
+    }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(eq(accounts.ownerId, uid)).orderBy(desc(comments.id)).limit(4000),
+    db.select({ id: collections.id, name: collections.name }).from(collections).where(eq(collections.ownerId, uid)),
+  ])
+  const waiting = groupConversations(rows).conversations.filter(c => c.waiting)
+  const bySeries: Record<number, number> = {}
+  for (const c of waiting) if (c.root.collectionId != null) bySeries[c.root.collectionId] = (bySeries[c.root.collectionId] ?? 0) + 1
+  const failed = rows.filter(r => r.status === 'ready' && r.error)
+  return {
+    waiting: waiting.length,
+    oldestWaitAt: waiting.map(c => c.last.createdAt).sort()[0] ?? null,
+    failed: failed.length,
+    failedIn: names.find(n => n.id === failed[0]?.collectionId)?.name ?? '',
+    failedSeriesId: failed[0]?.collectionId ?? null,
+    bySeries,
+  }
+}

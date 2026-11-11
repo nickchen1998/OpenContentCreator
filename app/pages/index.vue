@@ -1,26 +1,33 @@
 <script setup lang="ts">
-// 儀表板：整體數字、各系列文、各帳號。逐則貼文的成效在各系列文裡看
+// 儀表板：先看今天要處理什麼，再看這段期間的成效（跟前一段期間比）、哪些貼文表現好、各系列文與各帳號
 const boot = useBoot()
 const days = ref(28)
-const posts = ref<InsightPost[]>([])
-const status = ref<{ accountId: number, lastSyncedAt: string | null, lastError: string }[]>([])
-const replies = ref({ replied: 0, dms: 0 })
+const allPosts = ref<InsightPost[]>([]) // 兩倍期間的貼文：後半是這個期間，前半拿來比較
+interface Status { accountId: number, lastSyncedAt: string | null, lastError: string, tokenExpiresAt: string | null }
+const status = ref<Status[]>([])
+const replies = ref({ replied: 0, dms: 0, dmTried: 0 })
+const todo = ref({ waiting: 0, oldestWaitAt: null as string | null, failed: 0, failedIn: '', failedSeriesId: null as number | null, bySeries: {} as Record<number, number> })
 const series = ref<Series[]>([])
+const today = ref<Post[]>([])
 const syncing = ref(false)
 const loaded = ref(false)
-const { accountLabel, account } = useLookup()
+const { account } = useLookup()
 
 async function load() {
-  const [data, list] = await Promise.all([
-    attempt(() => api<{ posts: InsightPost[], status: typeof status.value, replies: typeof replies.value }>('/api/insights', { query: { days: days.value } })),
+  const day = todayTaipei()
+  const [data, list, scheduled] = await Promise.all([
+    attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value }>('/api/insights', { query: { days: days.value } })),
     attempt(() => api<Series[]>('/api/series')),
+    attempt(() => api<Post[]>('/api/posts', { query: { from: day, to: day } })),
   ])
   if (data) {
-    posts.value = data.posts
+    allPosts.value = data.posts
     status.value = data.status
     replies.value = data.replies
+    todo.value = data.todo
   }
   series.value = list ?? []
+  today.value = (scheduled ?? []).filter(p => p.status === 'scheduled')
   loaded.value = true
 }
 watch(days, load, { immediate: true })
@@ -33,18 +40,116 @@ async function sync() {
   if (ok) await load()
 }
 
-const summary = computed(() => summarizeInsights(posts.value, boot.value))
 const connected = computed(() => status.value.length > 0)
-const errors = computed(() => status.value.filter(s => s.lastError))
 const lastSynced = computed(() => {
   const latest = status.value.map(s => s.lastSyncedAt).filter(Boolean).sort().at(-1)
   return latest ? minutesToAt(Math.floor(Date.parse(latest) / 60000) + 480).replace('T', ' ').slice(5) : ''
 })
 const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
-// 系列文的數字是裡面所有貼文的累計；最下面一列是這段期間沒有歸入任何系列文的貼文
-const rows = computed(() => series.value.map(s => ({ ...s, totals: totalsOf(s.posts), platforms: [...new Set(s.posts.map(p => account(p.accountId)?.platform).filter(Boolean))] as Platform[] })))
-const maxViews = computed(() => Math.max(1, ...rows.value.map(r => r.totals.views)))
-const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(views / maxViews.value * 100))}%` })
+const taipei = (iso: string) => minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480)
+
+// ---- 今天要處理 ----
+const waitedFor = computed(() => {
+  if (!todo.value.oldestWaitAt) return ''
+  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(todo.value.oldestWaitAt)) / 60000))
+  return minutes < 60 ? `${minutes} 分鐘` : minutes < 1440 ? `${Math.floor(minutes / 60)} 小時` : `${Math.floor(minutes / 1440)} 天`
+})
+const nextPost = computed(() => {
+  const now = nowTaipei()
+  const next = today.value.filter(p => p.scheduledAt >= now).sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0]
+  return next ? `下一則 ${next.scheduledAt.slice(11)}` : today.value.length ? '今天的都過了' : ''
+})
+const linkErrors = computed(() => status.value.filter(s => s.lastError))
+const tokenNote = computed(() => {
+  const soonest = status.value.filter(s => s.tokenExpiresAt).sort((a, b) => a.tokenExpiresAt!.localeCompare(b.tokenExpiresAt!))[0]
+  if (!soonest) return ''
+  const left = Math.ceil((Date.parse(soonest.tokenExpiresAt!) - Date.now()) / 86400_000)
+  const platform = account(soonest.accountId)?.platform
+  return `${platform ? PLATFORMS[platform].label : ''} 權杖 ${left} 天後到期`
+})
+
+// ---- 這個期間 vs 前一個期間（各自是「那段期間發的貼文」的累計數字）----
+const since = computed(() => new Date(Date.now() - days.value * 86400_000).toISOString())
+const posts = computed(() => allPosts.value.filter(p => p.publishedAt >= since.value))
+const before = computed(() => allPosts.value.filter(p => p.publishedAt < since.value))
+const summary = computed(() => summarizeInsights(posts.value, boot.value))
+const kpis = computed(() => {
+  const now = totalsOf(posts.value)
+  const prev = totalsOf(before.value)
+  const sum = (list: InsightPost[]) => list.reduce((a, p) => a + p.comments, 0)
+  const trend = (diff: number, text: string) => ({ text: `${diff > 0 ? '▲' : diff < 0 ? '▼' : '—'} ${text}`, dir: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat' })
+  const none = { text: `前 ${days.value} 天沒有貼文`, dir: 'flat' }
+  const viewsDiff = now.views - prev.views
+  const rateDiff = (now.views ? now.engagement / now.views : 0) - (prev.views ? prev.engagement / prev.views : 0)
+  const commentsDiff = sum(posts.value) - sum(before.value)
+  return [
+    { label: '觀看', value: fmtNum(now.views), delta: prev.views ? trend(viewsDiff, `${Math.abs(Math.round(viewsDiff / prev.views * 100))}%　比前 ${days.value} 天`) : none },
+    { label: '互動率', value: rate(now.engagement, now.views), delta: prev.views && now.views ? trend(rateDiff, `${Math.abs(rateDiff * 100).toFixed(1)} 個百分點`) : none },
+    { label: '留言', value: `${fmtNum(sum(posts.value))} 則`, delta: prev.posts ? trend(commentsDiff, `${fmtNum(Math.abs(commentsDiff))} 則`) : none },
+    { label: '私訊送出', value: `${fmtNum(replies.value.dms)} 則`, delta: { text: replies.value.dmTried ? `送達率 ${Math.round(replies.value.dms / replies.value.dmTried * 100)}%` : '　', dir: 'flat' } },
+    { label: '發文', value: `${fmtNum(now.posts)} 則`, delta: { text: `前 ${days.value} 天 ${fmtNum(prev.posts)} 則`, dir: 'flat' } },
+  ]
+})
+
+// ---- 表現最好的貼文：跟同一個帳號這段期間的平均比 ----
+const top = computed(() => {
+  const average = new Map<number, number>()
+  for (const id of new Set(posts.value.map(p => p.accountId))) {
+    const list = posts.value.filter(p => p.accountId === id)
+    // 貼文太少時「平均」沒有意義，不比
+    if (list.length >= 3) average.set(id, list.reduce((a, p) => a + p.views, 0) / list.length)
+  }
+  return [...posts.value].filter(p => p.views > 0).sort((a, b) => b.views - a.views).slice(0, 4).map((p) => {
+    const mean = average.get(p.accountId)
+    const times = mean ? p.views / mean : 0
+    return { ...p, platform: account(p.accountId)?.platform, day: fmtDay(taipei(p.publishedAt).slice(0, 10)), times: times >= 1.2 ? times.toFixed(1) : '', seriesName: series.value.find(s => s.id === p.seriesId)?.name ?? '' }
+  })
+})
+
+// ---- 互動最好的發文時段：星期 × 早午晚，格子顏色是那個時段發的貼文的平均互動率 ----
+const SLOTS = [{ label: '早', from: 5, to: 12 }, { label: '午', from: 12, to: 18 }, { label: '晚', from: 18, to: 29 }]
+const SHADES = ['#dfe7da', '#b9c9b1', '#7f9a78', '#3e5346']
+const heat = computed(() => {
+  const cells = new Map<string, { eng: number, views: number, n: number }>()
+  for (const p of allPosts.value) {
+    if (!p.views) continue
+    const at = taipei(p.publishedAt)
+    const hour = Number(at.slice(11, 13))
+    const slot = SLOTS.findIndex(s => (hour < 5 ? hour + 24 : hour) >= s.from && (hour < 5 ? hour + 24 : hour) < s.to)
+    // 凌晨發的算前一天晚上
+    const day = (weekdayIdx(at.slice(0, 10)) + (hour < 5 ? 6 : 0)) % 7
+    const cell = cells.get(`${slot}:${day}`) ?? { eng: 0, views: 0, n: 0 }
+    cells.set(`${slot}:${day}`, { eng: cell.eng + engagementOf(p), views: cell.views + p.views, n: cell.n + 1 })
+  }
+  const rates = [...cells.values()].map(c => c.eng / c.views).sort((a, b) => a - b)
+  const level = (r: number) => Math.min(SHADES.length - 1, Math.floor(rates.filter(x => x < r).length / rates.length * SHADES.length))
+  let best = { label: '', rate: 0 }
+  const rows = SLOTS.map((s, si) => ({
+    label: s.label,
+    cells: WEEKDAYS.map((d, di) => {
+      const c = cells.get(`${si}:${di}`)
+      if (!c) return { key: `${si}:${di}`, style: 'background: var(--green-faint)', title: `週${d}${s.label}：沒有貼文` }
+      const r = c.eng / c.views
+      if (r > best.rate) best = { label: `週${d}${s.label}`, rate: r }
+      return { key: `${si}:${di}`, style: `background: ${SHADES[level(r)]}`, title: `週${d}${s.label}：${c.n} 則，互動率 ${(r * 100).toFixed(1)}%` }
+    }),
+  }))
+  // 貼文太少時格子大多是空的，看了會誤導，不顯示
+  const count = [...cells.values()].reduce((a, c) => a + c.n, 0)
+  return { rows, show: count >= 8, summary: best.label ? `各時段的平均互動率，${best.label}最高（${(best.rate * 100).toFixed(1)}%）` : '' }
+})
+
+// ---- 系列文 ----
+const rows = computed(() => series.value.map((s) => {
+  const totals = totalsOf(s.posts)
+  return {
+    ...s, totals, platforms: [...new Set(s.posts.map(p => account(p.accountId)?.platform).filter(Boolean))] as Platform[],
+    commentRate: totals.views ? `${(s.received / totals.views * 100).toFixed(1)}%` : '—',
+    delivered: !s.dmText ? '未設定' : `${fmtNum(s.dms)}／${fmtNum(s.matched)}`,
+    waiting: todo.value.bySeries[s.id] ?? 0,
+  }
+}))
+const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 7) < 10 ? 1 : 0)
 </script>
 
 <template>
@@ -63,66 +168,114 @@ const bar = (views: number) => ({ width: `${Math.max(views ? 2 : 0, Math.round(v
   <div v-if="loaded && !connected" class="card empty">
     還沒有連結帳號　<NuxtLink to="/accounts">前往連結</NuxtLink>
   </div>
-  <div v-for="e in errors" :key="e.accountId" class="card" style="background: var(--danger-bg); border-color: var(--danger)" role="alert">
-    <span class="small pf-row"><PlatformIcon :platform="account(e.accountId)?.platform" /><b>{{ accountLabel(e.accountId) }}</b>{{ e.lastError }}</span>
+
+  <div class="todo" aria-label="今天要處理">
+    <NuxtLink to="/feed?filter=pending" class="todo-card" :class="{ warn: todo.waiting }">
+      <span class="small bold">待回覆的對話</span><b>{{ fmtNum(todo.waiting) }} 串</b>
+      <span class="small">{{ waitedFor ? `最久的等了 ${waitedFor}` : '都回完了' }}</span>
+    </NuxtLink>
+    <NuxtLink :to="todo.failedSeriesId ? `/series/${todo.failedSeriesId}` : '/feed'" class="todo-card" :class="{ danger: todo.failed }">
+      <span class="small bold">送出失敗</span><b>{{ fmtNum(todo.failed) }} 則</b>
+      <span class="small">{{ todo.failed ? todo.failedIn || '點進去重送' : '沒有失敗的' }}</span>
+    </NuxtLink>
+    <NuxtLink to="/schedule" class="todo-card">
+      <span class="small bold">今天的排程</span><b>{{ fmtNum(today.length) }} 則</b>
+      <span class="small">{{ nextPost || '今天沒有排程' }}</span>
+    </NuxtLink>
+    <NuxtLink to="/accounts" class="todo-card" :class="{ danger: linkErrors.length }">
+      <span class="small bold">帳號連結</span><b>{{ linkErrors.length ? `${linkErrors.length} 個異常` : `${status.length} 個正常` }}</b>
+      <span class="small todo-note" :title="linkErrors[0]?.lastError">{{ linkErrors[0]?.lastError || tokenNote || '　' }}</span>
+    </NuxtLink>
   </div>
 
   <div class="stats">
-    <div class="stat"><span class="small muted">總觀看</span><b>{{ fmtNum(summary.totals.views) }}</b></div>
-    <div class="stat"><span class="small muted">總互動</span><b>{{ fmtNum(summary.totals.engagement) }}</b></div>
-    <div class="stat"><span class="small muted">平均互動率</span><b>{{ rate(summary.totals.engagement, summary.totals.views) }}</b></div>
-    <div class="stat"><span class="small muted">自動回覆</span><b>{{ fmtNum(replies.replied) }} 則</b></div>
-    <div class="stat"><span class="small muted">私訊送出</span><b>{{ fmtNum(replies.dms) }} 則</b></div>
+    <div v-for="k in kpis" :key="k.label" class="stat">
+      <span class="small muted">{{ k.label }}</span><b>{{ k.value }}</b>
+      <span class="small" :class="`trend-${k.delta.dir}`">{{ k.delta.text }}</span>
+    </div>
   </div>
 
-  <div class="fit-grid cols-3-2 fill">
-  <section class="card">
-    <div class="row between">
-      <h2>系列文</h2>
-      <NuxtLink to="/series" class="btn">管理系列文</NuxtLink>
-    </div>
-    <div class="table-scroll fill scroll">
-      <table class="compact" style="min-width: 520px">
-        <thead>
-          <tr><th scope="col">系列文</th><th scope="col">貼文</th><th scope="col">觀看</th><th scope="col">觀看占比</th><th scope="col">互動率</th><th scope="col">留言</th><th scope="col">私訊送出</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="s in rows" :key="s.id">
-            <th scope="row">
-              <NuxtLink :to="`/series/${s.id}`" style="color: var(--ink)">{{ s.name }}</NuxtLink>
-              <div class="small muted pf-row" style="font-weight: 400; display: flex; margin-top: 2px"><PlatformIcon v-for="p in s.platforms" :key="p" :platform="p" :size="14" /><template v-if="!s.platforms.length">還沒有貼文</template></div>
-            </th>
-            <td>{{ s.posts.length }} 則</td>
-            <td>{{ fmtNum(s.totals.views) }}</td>
-            <td><div class="bar-track" aria-hidden="true"><div class="bar" :style="bar(s.totals.views)" /></div></td>
-            <td>{{ rate(s.totals.engagement, s.totals.views) }}</td>
-            <td>{{ fmtNum(s.received) }}</td>
-            <td>{{ s.dmText ? `${fmtNum(s.dms)} 則` : '未設定' }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+  <div class="fit-grid cols-2 fill">
+    <section class="card">
+      <div class="row between">
+        <h2>表現最好的貼文</h2>
+        <NuxtLink to="/feed" class="btn sm">全部貼文</NuxtLink>
+      </div>
+      <div class="col fill scroll" style="gap: 12px">
+        <div class="col divided" style="gap: 8px">
+          <NuxtLink v-for="p in top" :key="p.id" :to="`/feed?post=${p.id}`" class="top-post">
+            <span class="col" style="gap: 0; min-width: 0">
+              <span class="top-text">{{ p.text || '（沒有文字的貼文）' }}</span>
+              <span class="small muted pf-row" style="gap: 4px 10px"><PlatformIcon :platform="p.platform" :size="13" /><span>{{ p.day }}</span><span>互動率 {{ rate(engagementOf(p), p.views) }}</span><span v-if="p.seriesName" class="bold" style="color: var(--green-deep)">{{ p.seriesName }}</span></span>
+            </span>
+            <span class="col" style="gap: 2px; align-items: flex-end; flex: none">
+              <span class="bold">{{ fmtNum(p.views) }}</span>
+              <span v-if="p.times" class="tag" style="background: var(--green-soft); color: var(--green-deep)">平均的 {{ p.times }} 倍</span>
+            </span>
+          </NuxtLink>
+          <div v-if="!top.length" class="empty">這段期間還沒有貼文的成效</div>
+        </div>
+        <div v-if="heat.show" class="col" style="gap: 6px">
+          <h3>互動最好的發文時段</h3>
+          <div class="heat" role="img" :aria-label="heat.summary">
+            <span /><span v-for="d in WEEKDAYS" :key="d" class="small muted" style="text-align: center">{{ d }}</span>
+            <template v-for="r in heat.rows" :key="r.label">
+              <span class="small muted">{{ r.label }}</span>
+              <span v-for="c in r.cells" :key="c.key" class="heat-cell" :style="c.style" :title="c.title" />
+            </template>
+          </div>
+          <span class="small muted">{{ heat.summary }}</span>
+        </div>
+      </div>
+    </section>
 
-  <section class="card">
-    <h2>各帳號</h2>
-    <div class="table-scroll fill scroll">
-      <table class="compact">
-        <thead>
-          <tr><th scope="col">帳號</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動</th><th scope="col">互動率</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="r in summary.rows" :key="r.accountId">
-            <th scope="row"><PlatformIcon :platform="r.platform" label /><div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
-            <td>{{ r.posts }}</td>
-            <td>{{ fmtNum(r.views) }}</td>
-            <td>{{ fmtNum(r.engagement) }}</td>
-            <td>{{ rate(r.engagement, r.views) }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="fit-col">
+      <section class="card fill">
+        <div class="row between">
+          <h2>系列文</h2>
+          <NuxtLink to="/series" class="btn sm">管理系列文</NuxtLink>
+        </div>
+        <div class="table-scroll fill scroll">
+          <table class="compact">
+            <thead>
+              <tr><th scope="col">系列文</th><th scope="col">觀看</th><th scope="col">留言率</th><th scope="col">私訊送達</th><th scope="col">待回覆</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in rows" :key="s.id">
+                <th scope="row">
+                  <NuxtLink :to="`/series/${s.id}`" style="color: var(--ink)">{{ s.name }}</NuxtLink>
+                  <div class="small muted pf-row" style="font-weight: 400; display: flex; margin-top: 2px"><PlatformIcon v-for="p in s.platforms" :key="p" :platform="p" :size="14" /><template v-if="!s.platforms.length">還沒有貼文</template></div>
+                </th>
+                <td>{{ fmtNum(s.totals.views) }}</td>
+                <td>{{ s.commentRate }}</td>
+                <td>{{ s.delivered }}</td>
+                <td><span v-if="s.waiting" class="tag" style="background: var(--warn-bg); color: var(--warn)">{{ s.waiting }} 串</span><template v-else>0</template></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="loaded && !rows.length" class="empty">還沒有系列文</div>
+        </div>
+      </section>
+
+      <section class="card fill">
+        <h2>各帳號</h2>
+        <div class="table-scroll fill scroll">
+          <table class="compact">
+            <thead>
+              <tr><th scope="col">帳號</th><th scope="col">發文</th><th scope="col">觀看</th><th scope="col">互動率</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in summary.rows" :key="r.accountId">
+                <th scope="row"><PlatformIcon :platform="r.platform" label /><div class="small muted" style="font-weight: 400">{{ r.name }}</div></th>
+                <td>{{ r.posts }}<div class="small muted">每週 {{ perWeek(r.posts) }} 則</div></td>
+                <td>{{ fmtNum(r.views) }}</td>
+                <td>{{ rate(r.engagement, r.views) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="!summary.rows.length" class="empty">還沒有帳號</div>
+        </div>
+      </section>
     </div>
-    <div v-if="!summary.rows.length" class="empty">還沒有帳號</div>
-  </section>
   </div>
 </template>

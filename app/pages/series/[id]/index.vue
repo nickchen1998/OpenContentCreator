@@ -71,14 +71,99 @@ const view = ref<'chart' | 'table'>('chart')
 const daily = computed(() => {
   const today = todayTaipei()
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13))
-  const counts = new Map(days.map(d => [d, 0]))
+  const counts = new Map(days.map(d => [d, { comments: 0, dms: 0 }]))
   for (const c of comments.value) {
     if (c.mine) continue
-    const day = minutesToAt(Math.floor(Date.parse(c.createdAt) / 60000) + 480).slice(0, 10)
-    if (counts.has(day)) counts.set(day, counts.get(day)! + 1)
+    const slot = counts.get(minutesToAt(Math.floor(Date.parse(c.createdAt) / 60000) + 480).slice(0, 10))
+    if (!slot) continue
+    slot.comments += 1
+    if (sentDm(c)) slot.dms += 1
   }
-  return { labels: days.map(fmtDay), data: [{ label: '留言', data: days.map(d => counts.get(d)!), color: SERIES_GREEN }], total: [...counts.values()].reduce((a, b) => a + b, 0) }
+  const total = (key: 'comments' | 'dms') => days.reduce((a, d) => a + counts.get(d)![key], 0)
+  return {
+    labels: days.map(fmtDay),
+    // 兩個都是「則數」，同一個刻度可以並排；顏色取互動組成那組驗過的前兩個
+    data: [{ label: '留言', data: days.map(d => counts.get(d)!.comments), color: PARTS[0].color }, { label: '私訊送出', data: days.map(d => counts.get(d)!.dms), color: PARTS[1].color }],
+    summary: `近 14 天留言 ${total('comments')} 則、私訊送出 ${total('dms')} 則`,
+  }
 })
+// ---- 轉換漏斗：觀看 → 留言 → 符合條件 → 已回覆 → 私訊送出 ----
+const pct = (part: number, whole: number) => (whole ? `${(part / whole * 100).toFixed(part / whole < 0.1 ? 1 : 0)}%` : '—')
+const funnel = computed(() => {
+  const s = series.value!
+  const views = totals.value.views
+  const steps = [
+    { label: '觀看', value: fmtNum(views), n: views, note: `互動率 ${rate(totals.value.engagement, views)}` },
+    { label: '留言', value: `${fmtNum(s.received)} 則`, n: s.received, note: views ? `觀看的 ${pct(s.received, views)}` : '' },
+    { label: '符合條件', value: `${fmtNum(s.matched)} 則`, n: s.matched, note: s.received ? `留言的 ${pct(s.matched, s.received)}` : '' },
+    { label: '已回覆', value: `${fmtNum(s.replied)} 則`, n: s.replied, note: !s.replies.length ? '沒有設定回覆' : s.failed ? `${s.failed} 則送出失敗` : s.matched ? `符合條件的 ${pct(s.replied, s.matched)}` : '' },
+    { label: '私訊送出', value: `${fmtNum(s.dms)} 則`, n: s.dms, note: !s.dmText ? '沒有設定私訊' : s.matched ? `符合條件的 ${pct(s.dms, s.matched)}` : '' },
+  ]
+  // 觀看跟後面幾步差太多（幾千比幾十），長條分兩組各自比：觀看自己滿格，其餘以留言數為基準
+  return steps.map((step, i) => ({ ...step, width: i === 0 ? 100 : s.received ? Math.max(step.n ? 3 : 0, Math.round(step.n / s.received * 100)) : 0 }))
+})
+
+// ---- 目前的回覆設定（不用開視窗就看得到）----
+const condition = computed(() => {
+  const s = series.value!
+  if (s.matchType !== 'keyword') return '任何留言'
+  const words = s.keywords.split(/[,，、\n]/).map(k => k.trim()).filter(Boolean)
+  return words.length ? `留言含${words.map(w => `「${w}」`).join('')}` : '還沒填關鍵字'
+})
+
+// ---- 沒命中關鍵字的留言：最能直接提高轉換的地方，可以把詞加進關鍵字 ----
+const missed = computed(() => comments.value.filter(c => !c.mine && c.status === 'unmatched' && c.reason === '留言沒有包含關鍵字'))
+async function addKeyword(c: CommentRow) {
+  const s = series.value!
+  const word = window.prompt('加入關鍵字', c.text.trim().slice(0, 12))?.trim()
+  if (!word) return
+  const keywords = [s.keywords.trim(), word].filter(Boolean).join(', ')
+  const body = { name: s.name, matchType: s.matchType, keywords, replies: s.replies, dmText: s.dmText }
+  if (await attempt(() => api(`/api/series/${id}`, { method: 'PATCH', body }), `已加入「${word}」`)) await load(true)
+}
+
+// ---- 各平台比較 ----
+const sentDm = (c: CommentRow) => !c.mine && c.status === 'sent' && Boolean(c.dmText) && !c.error
+const byPlatform = computed(() => PLATFORM_KEYS.map((key) => {
+  const list = (series.value?.posts ?? []).filter(p => account(p.accountId)?.platform === key)
+  const views = list.reduce((a, p) => a + p.views, 0)
+  const replies = list.reduce((a, p) => a + p.comments, 0)
+  const dms = comments.value.filter(c => sentDm(c) && account(c.accountId)?.platform === key).length
+  return { key, posts: list.length, views, rate: pct(replies, views), dms: key === 'threads' || key === 'youtube' ? '—' : fmtNum(dms) }
+}).filter(r => r.posts))
+
+// ---- 名單：拿到私訊的人 ----
+const leads = computed(() => comments.value.filter(sentDm))
+const side = ref<'talk' | 'leads'>('talk')
+const LEADS_PAGE = 8
+const leadPage = ref(1)
+const leadPages = computed(() => Math.max(1, Math.ceil(leads.value.length / LEADS_PAGE)))
+const shownLeads = computed(() => leads.value.slice((leadPage.value - 1) * LEADS_PAGE, leadPage.value * LEADS_PAGE))
+const timeOf = (iso: string) => minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480).replace('T', ' ')
+function downloadLeads() {
+  const cell = (v: string) => `"${v.replace(/"/g, '""')}"`
+  const rows = leads.value.map(c => [c.author, PLATFORMS[account(c.accountId)?.platform ?? 'instagram'].label, c.text, timeOf(c.createdAt)].map(cell).join(','))
+  // 開頭的 BOM 讓 Excel 用 UTF-8 開，中文才不會變亂碼
+  const blob = new Blob([`\uFEFF帳號,平台,留言,時間\n${rows.join('\n')}`], { type: 'text/csv;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `${series.value!.name}-名單.csv`
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
+// ---- 一段文字版的成效，貼給主管或客戶 ----
+async function copySummary() {
+  const s = series.value!
+  const lines = [
+    `【${s.name}】`,
+    `觀看 ${fmtNum(totals.value.views)}，互動率 ${rate(totals.value.engagement, totals.value.views)}`,
+    `留言 ${fmtNum(s.received)} 則，符合條件 ${fmtNum(s.matched)} 則，已回覆 ${fmtNum(s.replied)} 則，私訊送出 ${fmtNum(s.dms)} 則`,
+    ...byPlatform.value.map(r => `${PLATFORMS[r.key].label}：${r.posts} 則貼文，觀看 ${fmtNum(r.views)}，留言率 ${r.rate}`),
+  ]
+  if (await attempt(() => navigator.clipboard.writeText(lines.join('\n')))) notify('已複製')
+}
+
 const viewsSummary = computed(() => `各貼文觀看：${chartRows.value.rows.map(r => `${r.label} ${r.views}`).join('、')}`)
 const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.rows.map(r => `${r.label} 按讚 ${r.likes}、留言 ${r.comments}、分享 ${r.shares}、收藏 ${r.saves}`).join('；')}`)
 
@@ -94,20 +179,60 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
       </div>
       <div class="row">
         <button type="button" class="btn" :disabled="syncing || !series.posts.length" @click="sync">{{ syncing ? '同步中…' : '立即同步' }}</button>
+        <button type="button" class="btn" @click="copySummary">複製成效摘要</button>
         <button type="button" class="btn" @click="settingsOpen = true">設定系列文</button>
       </div>
     </div>
 
-    <div class="stats">
-      <div class="stat"><span class="small muted">觀看</span><b>{{ fmtNum(totals.views) }}</b></div>
-      <div class="stat"><span class="small muted">互動</span><b>{{ fmtNum(totals.engagement) }}</b></div>
-      <div class="stat"><span class="small muted">互動率</span><b>{{ rate(totals.engagement, totals.views) }}</b></div>
-      <div class="stat"><span class="small muted">收藏</span><b>{{ fmtNum(totals.saves) }}</b></div>
-      <div class="stat"><span class="small muted">留言</span><b>{{ fmtNum(series.received) }} 則</b></div>
-      <div class="stat"><span class="small muted">私訊送出</span><b>{{ fmtNum(series.dms) }} 則</b></div>
+    <div class="stats" aria-label="從觀看到私訊的轉換">
+      <div v-for="f in funnel" :key="f.label" class="stat">
+        <span class="small muted">{{ f.label }}</span>
+        <b>{{ f.value }}</b>
+        <div class="funnel-track" aria-hidden="true"><div class="funnel-bar" :style="{ width: `${f.width}%` }" /></div>
+        <span class="small muted">{{ f.note || '　' }}</span>
+      </div>
     </div>
 
-    <div class="fit-grid cols-2 fill">
+    <div class="fit-grid cols-3 fill">
+      <div class="fit-col">
+        <section class="card shrink" style="gap: 8px">
+          <h2>有人留言時</h2>
+          <dl class="settings-list">
+            <dt>條件</dt><dd>{{ condition }}</dd>
+            <dt>回覆</dt><dd><template v-if="series.replies.length">{{ series.replies.length }} 句輪流　<span class="muted">{{ series.replies[0] }}</span></template><span v-else class="muted">不回覆</span></dd>
+            <dt>私訊</dt><dd><span v-if="series.dmText">{{ series.dmText }}</span><span v-else class="muted">不私訊</span></dd>
+          </dl>
+        </section>
+        <section v-if="byPlatform.length" class="card shrink" style="gap: 6px">
+          <h2>各平台</h2>
+          <table class="compact">
+            <thead><tr><th scope="col">平台</th><th scope="col">觀看</th><th scope="col">留言率</th><th scope="col">私訊</th></tr></thead>
+            <tbody>
+              <tr v-for="r in byPlatform" :key="r.key">
+                <th scope="row"><PlatformIcon :platform="r.key" label /><div class="small muted" style="font-weight: 400">{{ r.posts }} 則</div></th>
+                <td>{{ fmtNum(r.views) }}</td><td>{{ r.rate }}</td><td>{{ r.dms }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section v-if="series.matchType === 'keyword'" class="card fill" style="gap: 6px">
+          <div class="row between">
+            <h2>沒符合條件的留言</h2>
+            <span class="small muted">{{ missed.length }} 則</span>
+          </div>
+          <div class="col divided fill scroll" style="gap: 8px">
+            <div v-for="c in missed" :key="c.id" class="row between" style="gap: 10px; flex-wrap: nowrap">
+              <span class="col" style="gap: 0; min-width: 0">
+                <span class="wrap-any" style="font-size: 14px">{{ c.text }}</span>
+                <span class="small muted pf-row" style="gap: 6px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="13" />{{ c.author }}</span>
+              </span>
+              <button type="button" class="btn sm" style="flex: none" :aria-label="`把 ${c.author} 留言裡的詞加入關鍵字`" @click="addKeyword(c)">加關鍵字</button>
+            </div>
+            <div v-if="!missed.length" class="empty">留言都有符合</div>
+          </div>
+        </section>
+      </div>
+
       <section class="card">
         <div class="row between">
           <h2>成效統計</h2>
@@ -127,8 +252,8 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
             <BarChart horizontal stacked :labels="chartLabels" :datasets="partsData" :height="rowsHeight + 34" :summary="partsSummary" />
           </div>
           <div class="chart-fill">
-            <h3 class="chart-title">每日留言<span class="small muted" style="font-weight: 400">　近 14 天</span></h3>
-            <BarChart fill value-labels :labels="daily.labels" :datasets="daily.data" :summary="`近 14 天每日留言數，合計 ${daily.total} 則`" />
+            <h3 class="chart-title">每日留言與私訊<span class="small muted" style="font-weight: 400">　近 14 天</span></h3>
+            <BarChart fill :labels="daily.labels" :datasets="daily.data" :summary="daily.summary" />
           </div>
         </div>
         <div v-else class="table-scroll fill scroll">
@@ -154,8 +279,31 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
       </section>
 
       <section class="card">
-        <h2>留言紀錄</h2>
-        <ConversationList :rows="comments" show-platform @changed="load()" />
+        <div class="row between">
+          <div class="seg" role="group" aria-label="右側內容">
+            <button type="button" :aria-pressed="side === 'talk'" @click="side = 'talk'">留言紀錄</button>
+            <button type="button" :aria-pressed="side === 'leads'" @click="side = 'leads'">名單 {{ leads.length }}</button>
+          </div>
+          <button v-if="side === 'leads' && leads.length" type="button" class="btn sm" @click="downloadLeads">下載 CSV</button>
+        </div>
+        <ConversationList v-if="side === 'talk'" :rows="comments" show-platform @changed="load()" />
+        <template v-else>
+          <div class="comment-log fill scroll" tabindex="0" aria-label="拿到私訊的人">
+            <div v-for="c in shownLeads" :key="c.id" class="comment-item">
+              <div class="row between" style="gap: 6px 12px">
+                <span class="pf-row bold" style="gap: 6px; font-size: 14px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="14" />{{ c.author }}</span>
+                <span class="small muted">{{ timeOf(c.createdAt).slice(5) }}</span>
+              </div>
+              <span class="small muted wrap-any">{{ c.text }}</span>
+            </div>
+            <div v-if="!leads.length" class="empty">還沒有人拿到私訊</div>
+          </div>
+          <div v-if="leadPages > 1" class="row between" role="navigation" aria-label="名單分頁">
+            <button type="button" class="btn sm" :disabled="leadPage <= 1" @click="leadPage -= 1">上一頁</button>
+            <span class="small muted" aria-live="polite">第 {{ leadPage }} / {{ leadPages }} 頁</span>
+            <button type="button" class="btn sm" :disabled="leadPage >= leadPages" @click="leadPage += 1">下一頁</button>
+          </div>
+        </template>
       </section>
     </div>
 

@@ -13,7 +13,7 @@ export async function loadInsights(uid: number, days: number) {
     }).from(accountPosts).innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
       .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
       .where(and(eq(accounts.ownerId, uid), gte(accountPosts.publishedAt, since))).orderBy(desc(accountPosts.publishedAt)).limit(1000),
-    db.select({ accountId: connections.accountId, lastSyncedAt: connections.lastSyncedAt, lastError: connections.lastError })
+    db.select({ accountId: connections.accountId, lastSyncedAt: connections.lastSyncedAt, lastError: connections.lastError, tokenExpiresAt: connections.tokenExpiresAt })
       .from(connections).innerJoin(accounts, eq(accounts.id, connections.accountId))
       .where(eq(accounts.ownerId, uid)),
   ])

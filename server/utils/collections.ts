@@ -18,6 +18,9 @@ export async function loadSeries(uid: number): Promise<Series[]> {
     db.select({
       collectionId: comments.collectionId,
       received: sql<number>`sum(case when ${comments.mine} = 0 then 1 else 0 end)`,
+      // 符合回覆條件的留言（包含因為「同一個人只回一次」或每小時上限而略過的）；對話裡的後續回覆、沒命中關鍵字的不算
+      matched: sql<number>`sum(case when ${comments.mine} = 0 and ${comments.status} in ('ready', 'sent', 'skipped') then 1 else 0 end)`,
+      failed: sql<number>`sum(case when ${comments.status} = 'ready' and ${comments.error} != '' then 1 else 0 end)`,
       replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
       // 私訊失敗時 error 會寫「留言已回覆，但私訊失敗」，那種不算送出
       dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
@@ -30,6 +33,8 @@ export async function loadSeries(uid: number): Promise<Series[]> {
       matchType: c.matchType === 'keyword' ? 'keyword' : 'any',
       posts: members.filter(m => m.collectionId === c.id).map(({ collectionId: _c, ...p }) => p),
       received: n?.received ?? 0,
+      matched: n?.matched ?? 0,
+      failed: n?.failed ?? 0,
       replied: n?.replied ?? 0,
       dms: n?.dms ?? 0,
     }
@@ -93,7 +98,7 @@ export async function setSeriesPosts(uid: number, seriesId: number, value: unkno
 
 /** 系列文的留言紀錄（新的在前） */
 export function loadSeriesComments(seriesId: number) {
-  return useDb().select().from(comments).where(eq(comments.collectionId, seriesId)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(200)
+  return useDb().select().from(comments).where(eq(comments.collectionId, seriesId)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(600)
 }
 
 /** 儀表板用：期間內自動回覆與私訊送出的次數 */
@@ -102,6 +107,8 @@ export async function replyTotals(uid: number, days: number) {
   const [row] = await useDb().select({
     replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
     dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
+    // 有試著送私訊的（包含失敗的），用來算送達率
+    dmTried: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' then 1 else 0 end)`,
   }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(and(eq(accounts.ownerId, uid), gte(comments.createdAt, since)))
-  return { replied: row?.replied ?? 0, dms: row?.dms ?? 0 }
+  return { replied: row?.replied ?? 0, dms: row?.dms ?? 0, dmTried: row?.dmTried ?? 0 }
 }

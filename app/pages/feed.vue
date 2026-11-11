@@ -6,7 +6,9 @@ const { accounts, account } = useLookup()
 const posts = ref<FeedPost[]>([])
 const series = ref<{ id: number, name: string }[]>([])
 const loaded = ref(false)
-const filter = ref<'all' | 'pending' | 'loose'>('all')
+const route = useRoute()
+// 從儀表板的「待回覆的對話」點進來會帶 ?filter=pending
+const filter = ref<'all' | 'pending' | 'loose'>(route.query.filter === 'pending' ? 'pending' : 'all')
 const selectedId = ref(0)
 const replies = ref<CommentRow[]>([])
 
@@ -42,7 +44,9 @@ async function load() {
   if (data) {
     posts.value = data.posts
     series.value = data.series
-    if (!selected.value && data.posts.length) await pick((data.posts.find(p => p.pending > 0) ?? data.posts[0]!).id)
+    // 從儀表板點進來時可以指定要看哪一則（?post=）
+    const wanted = Number(route.query.post)
+    if (!selected.value && data.posts.length) await pick((data.posts.find(p => p.id === wanted) ?? data.posts.find(p => p.pending > 0) ?? data.posts[0]!).id)
   }
   loaded.value = true
 }

@@ -45,8 +45,10 @@ export interface Series {
   dmText: string
   enabled: boolean
   posts: InsightPost[]
-  /** 收到的留言、已回覆、私訊送出的次數 */
+  /** 收到的留言、其中符合回覆條件的、送出失敗的、已回覆、私訊送出的次數 */
   received: number
+  matched: number
+  failed: number
   replied: number
   dms: number
 }
