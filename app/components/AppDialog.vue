@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 原生 <dialog>：有 focus trap、Esc 關閉。v-model 控制開關，submit 事件交給外面存檔
 const open = defineModel<boolean>({ required: true })
-defineProps<{ title: string, submitLabel?: string, error?: string, busy?: boolean }>()
+defineProps<{ title: string, submitLabel?: string, error?: string, busy?: boolean, wide?: boolean }>()
 defineEmits<{ submit: [] }>()
 const el = ref<HTMLDialogElement>()
 watch(open, (value) => {
@@ -11,7 +11,7 @@ watch(open, (value) => {
 </script>
 
 <template>
-  <dialog ref="el" @close="open = false">
+  <dialog ref="el" :class="{ wide }" @close="open = false">
     <form v-if="open" @submit.prevent="$emit('submit')">
       <h2>{{ title }}</h2>
       <slot />

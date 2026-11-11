@@ -38,7 +38,8 @@
 - 一則貼文只能屬於一個系列文（`collection_posts.post_id` 唯一）。留言進來時用（帳號, 平台貼文 id）找到 `account_posts`
   → 系列文 → 依設定回覆；貼文不在系列裡、系列暫停、或沒寫回覆內容時完全不處理也不留紀錄（`server/utils/replies.ts`）。
 - 留言紀錄用 `comments.collection_id` 歸屬系列文，顯示在系列成效頁。`comments.rule_id`／`rule_name`／`kind` 是舊欄位。
-- 側欄順序：Dashboard、Series、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點（進設定頁），不放按鈕。
+- 側欄順序：Dashboard、Series、Schedule｜Accounts、Connections、Members。系列文清單的卡片整張可點、不放按鈕也不放狀態標籤，
+  點進去就是成效頁（一個系列文只有一頁）。新增與設定共用 `SeriesDialog`（畫面中間的視窗），貼文清單在區塊內捲動並分頁。
 
 ## 平台串接
 

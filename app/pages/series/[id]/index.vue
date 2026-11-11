@@ -7,6 +7,8 @@ const comments = ref<CommentRow[]>([])
 const missing = ref(false)
 const filter = ref<'all' | 'failed' | 'open'>('all')
 const busyId = ref(0)
+const settingsOpen = ref(false)
+const backToList = () => navigateTo('/series')
 
 async function load() {
   try {
@@ -52,15 +54,15 @@ async function remove(c: CommentRow) {
 </script>
 
 <template>
-  <div v-if="missing" class="empty">找不到這個系列文。<NuxtLink to="/">返回儀表板</NuxtLink></div>
+  <div v-if="missing" class="empty">找不到這個系列文。<NuxtLink to="/series">返回系列文管理</NuxtLink></div>
   <template v-else-if="series">
     <div class="row between">
       <div class="row" style="gap: 12px">
-        <NuxtLink to="/" class="btn-text" style="padding-left: 0">← 儀表板</NuxtLink>
+        <NuxtLink to="/series" class="btn-text" style="padding-left: 0">← 系列文管理</NuxtLink>
         <h1 class="wrap-any">{{ series.name }}</h1>
-        <span class="pill" :class="{ muted: !series.enabled || !series.replies.length }">{{ !series.replies.length ? '只看成效' : series.enabled ? '自動回覆啟用中' : '已暫停' }}</span>
+        <span v-if="series.replies.length && !series.enabled" class="pill muted">已暫停</span>
       </div>
-      <NuxtLink :to="`/series/${series.id}/edit`" class="btn">設定系列文</NuxtLink>
+      <button type="button" class="btn" @click="settingsOpen = true">設定系列文</button>
     </div>
 
     <div class="stats">
@@ -92,7 +94,7 @@ async function remove(c: CommentRow) {
             </tr>
           </tbody>
         </table>
-        <div v-else class="empty">還沒有貼文　<NuxtLink :to="`/series/${series.id}/edit`">加入貼文</NuxtLink></div>
+        <div v-else class="empty">還沒有貼文　<button type="button" class="btn-text" @click="settingsOpen = true">加入貼文</button></div>
       </div>
     </section>
 
@@ -123,6 +125,7 @@ async function remove(c: CommentRow) {
       </div>
       <div v-if="!shown.length" class="empty">沒有紀錄</div>
     </section>
+    <SeriesDialog v-model="settingsOpen" :series="series" @saved="load" @deleted="backToList" />
   </template>
   <div v-else class="empty">載入中…</div>
 </template>

@@ -208,3 +208,15 @@ dialog form { padding: 24px 26px; display: flex; flex-direction: column; gap: 14
 /* 整張可以點的卡片（系列文清單） */
 a.card.card-link { color: var(--ink); text-decoration: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 a.card.card-link:hover { border-color: var(--green-deep); text-decoration: none; box-shadow: 0 4px 18px rgba(46, 54, 47, 0.1); }
+
+/* 寬版對話框（設定系列文）：兩欄，內容太長時在對話框裡捲動 */
+dialog.wide { width: min(960px, calc(100vw - 32px)); }
+dialog form { max-height: calc(100vh - 32px); overflow-y: auto; }
+.series-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 20px 28px; align-items: start; }
+.post-list { height: 336px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-field); background: var(--card); overscroll-behavior: contain; }
+.post-option { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; min-height: 44px; cursor: pointer; }
+.post-option + .post-option { border-top: 1px solid var(--line); }
+.post-option:hover { background: var(--green-faint); }
+.post-option.locked { opacity: .55; cursor: not-allowed; }
+.post-option.locked:hover { background: none; }
+.post-option input { width: 18px; height: 18px; margin-top: 4px; flex-shrink: 0; accent-color: var(--green-deep); }
