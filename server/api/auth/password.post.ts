@@ -9,6 +9,9 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const [user] = await db.select().from(users).where(eq(users.id, uid))
   if (!user || typeof body.current !== 'string' || !(await verifyPassword(body.current, user.passwordHash))) throw bad('目前的密碼不對')
-  await db.update(users).set({ passwordHash: await hashPassword(next) }).where(eq(users.id, uid))
+  const passwordHash = await hashPassword(next)
+  await db.update(users).set({ passwordHash }).where(eq(users.id, uid))
+  // 密碼一改，所有舊的登入都會失效；這個裝置換上新的版本，不用重新登入
+  await setUserSession(event, { secure: { pv: await passwordVersion(passwordHash) } })
   return { ok: true }
 })

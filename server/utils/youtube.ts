@@ -2,7 +2,12 @@
 // 存起來的是 refresh token，每次用它換短效的 access token。沒有留言的 webhook，靠排程輪詢；沒有私訊 API。
 // 額度：整個站每天 10,000 單位。讀取（留言、影片數字）一次 1 單位，回一則留言 50 單位。
 
-export class YoutubeError extends Error {}
+/** code：連結流程回到帳號頁時用的代碼（網址上只帶代碼，文字由頁面自己對照，不把任意文字帶在網址上顯示） */
+export class YoutubeError extends Error {
+  constructor(message: string, public code?: 'notconfigured' | 'nochannel' | 'norefresh') {
+    super(message)
+  }
+}
 
 const SCOPE = 'https://www.googleapis.com/auth/youtube.force-ssl'
 
@@ -15,7 +20,7 @@ export function youtubeClient() {
   const config = useRuntimeConfig()
   const id = config.youtubeClientId as string
   const secret = config.youtubeClientSecret as string
-  if (!id || !secret) throw new YoutubeError('站方還沒有設定 YouTube 的連線資訊')
+  if (!id || !secret) throw new YoutubeError('站方還沒有設定 YouTube 的連線資訊', 'notconfigured')
   return { id, secret }
 }
 
@@ -96,7 +101,7 @@ async function call<T = any>(refreshToken: string, path: string, init: CallInit 
 export async function youtubeChannel(refreshToken: string, access?: string) {
   const data = await call(refreshToken, '/channels', { query: { part: 'snippet', mine: 'true' }, access })
   const channel = data.items?.[0]
-  if (!channel) throw new YoutubeError('這個 Google 帳號沒有 YouTube 頻道')
+  if (!channel) throw new YoutubeError('這個 Google 帳號沒有 YouTube 頻道', 'nochannel')
   return { externalId: String(channel.id), externalName: String(channel.snippet?.title ?? '') }
 }
 

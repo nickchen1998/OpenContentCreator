@@ -132,7 +132,8 @@ const leadPages = computed(() => Math.max(1, Math.ceil(leads.value.length / LEAD
 const shownLeads = computed(() => leads.value.slice((leadPage.value - 1) * LEADS_PAGE, leadPage.value * LEADS_PAGE))
 const timeOf = (iso: string) => minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480).replace('T', ' ')
 function downloadLeads() {
-  const cell = (v: string) => `"${v.replace(/"/g, '""')}"`
+  // 留言是外人寫的：以 = + - @ 開頭的內容，Excel 會當成公式執行。前面補一個單引號讓它變成純文字
+  const cell = (v: string) => `"${(/^[=+\-@\t\r]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"`
   const rows = leads.value.map(c => [c.author, PLATFORMS[account(c.accountId)?.platform ?? 'instagram'].label, c.text, timeOf(c.createdAt)].map(cell).join(','))
   // 開頭的 BOM 讓 Excel 用 UTF-8 開，中文才不會變亂碼
   const blob = new Blob([`\uFEFF帳號,平台,留言,時間\n${rows.join('\n')}`], { type: 'text/csv;charset=utf-8' })

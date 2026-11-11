@@ -118,6 +118,10 @@
 
 - 新的 server route 要放在 `/api/*` 或 `/mcp` 底下，否則會被靜態資產接走。頁面路徑不能叫 `/mcp`。
 - `/api/*` 由 `server/middleware/auth.ts` 統一要求登入（`/api/auth/login` 與 `/api/hooks/*` 除外），每個請求重新查一次會員；`/mcp` 自己驗專案 token。
+- **安全性（2026-11-11 掃描後補的）**：session 的 `secure.pv` 是密碼版本，middleware 每個請求比對，改密碼／重設密碼後舊的登入全部失效；
+  登入時帳號不存在也會做一次假的密碼運算（不洩漏帳號存不存在），並順手清掉一天前的失敗紀錄；靜態頁面的安全標頭在 `public/_headers`
+  （外殼有內嵌腳本，不能限制 script-src）；匯出 CSV 時外人寫的內容要防公式（`=`、`+`、`-`、`@` 開頭補單引號）；
+  轉址回頁面時只帶固定代碼、不帶任意文字。已知未修：PBKDF2 次數偏低（受 Free 方案 CPU 限制）、登入鎖定以帳號為單位。
 - 密碼雜湊是 PBKDF2 20,000 次（Free 方案的 CPU 上限），`server/utils/passwords.ts` 與 `scripts/set-user.mjs` 要用同一種格式。
 - drizzle-kit 在非互動環境遇到「是改名還是新增」會直接失敗：一次 migration 不要同時刪表又加表。真的避不開時用 pty 代答
   （第一個選項是「新增」），產出的 snapshot 可以留、**SQL 要自己重寫**。

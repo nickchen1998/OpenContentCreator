@@ -12,10 +12,23 @@ async function loadConnections() {
 }
 onMounted(async () => {
   await loadConnections()
-  // 從 Google 的同意畫面回來時，結果帶在網址上（?youtube=ok 或失敗的原因）
+  // 從 Google 的同意畫面回來時，結果是網址上的代碼（?youtube=ok 等）。只認得這幾個代碼，其他的一律不顯示，
+  // 免得有人做一個連結讓你看到他指定的文字
+  const messages: Record<string, string> = {
+    ok: 'YouTube 已連結',
+    denied: 'YouTube 連結失敗：你沒有同意授權',
+    google: 'YouTube 連結失敗：Google 沒有完成授權，請再試一次',
+    invalid: 'YouTube 連結失敗：連結的請求無效，請再試一次',
+    expired: 'YouTube 連結失敗：連結的請求過期了，請再試一次',
+    account: 'YouTube 連結失敗：找不到要連結的帳號',
+    notconfigured: 'YouTube 連結失敗：站方還沒有設定 YouTube 的連線資訊',
+    nochannel: 'YouTube 連結失敗：這個 Google 帳號沒有 YouTube 頻道',
+    norefresh: 'YouTube 連結失敗：請到 Google 帳號的「第三方應用程式存取權」移除這個應用程式後再連結一次',
+    failed: 'YouTube 連結失敗，請再試一次',
+  }
   const result = useRoute().query.youtube
   if (typeof result === 'string' && result) {
-    notify(result === 'ok' ? 'YouTube 已連結' : `YouTube 連結失敗：${result}`)
+    if (messages[result]) notify(messages[result])
     await navigateTo('/accounts', { replace: true })
   }
 })
