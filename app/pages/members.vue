@@ -51,7 +51,7 @@ const isMe = (m: Member) => m.id === (user.value as { id?: number } | null)?.id
     </div>
     <div class="row" style="gap: 8px 16px">
       <span class="small muted">帳號</span><code class="box">{{ issued.username }}</code>
-      <span class="small muted">密碼</span><code class="box" style="font-size: 16px; letter-spacing: 0.04em">{{ issued.password }}</code>
+      <span class="small muted">密碼</span><code class="box" style="font-size: 17px; letter-spacing: 0.04em">{{ issued.password }}</code>
     </div>
     <div class="row" style="gap: 12px">
       <button class="btn primary" type="button" @click="copyCredentials">{{ copied ? '已複製' : '複製登入資訊' }}</button>

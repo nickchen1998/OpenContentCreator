@@ -62,7 +62,7 @@ async function copy(text: string) {
       <div v-if="warning" class="error" role="alert">{{ warning }}</div>
 
       <label class="field">Access token
-        <textarea v-model="form.token" rows="3" autocomplete="off" spellcheck="false" :required="!connection" :placeholder="connection ? '留空 = 不更換' : ''" style="font-family: ui-monospace, Menlo, monospace; font-size: 13px" />
+        <textarea v-model="form.token" rows="3" autocomplete="off" spellcheck="false" :required="!connection" :placeholder="connection ? '留空 = 不更換' : ''" style="font-family: ui-monospace, Menlo, monospace; font-size: 14px" />
       </label>
       <label v-if="account.platform === 'facebook'" class="field">應用程式編號（App ID）
         <input v-model="form.appId" type="text" inputmode="numeric" autocomplete="off" :required="!connection">

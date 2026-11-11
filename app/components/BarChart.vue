@@ -57,21 +57,21 @@ function build() {
         [valueAxis]: {
           stacked: props.stacked, beginAtZero: true,
           grid: { color: GRID, drawTicks: false }, border: { display: false },
-          ticks: { color: MUTED, font: { family: FONT, size: 12 }, padding: 6, precision: 0, maxTicksLimit: 5 },
+          ticks: { color: MUTED, font: { family: FONT, size: 13 }, padding: 6, precision: 0, maxTicksLimit: 5 },
         },
         [categoryAxis]: {
           stacked: props.stacked,
           grid: { display: false }, border: { color: GRID },
-          ticks: { color: INK, font: { family: FONT, size: 12 }, autoSkip: !props.horizontal, maxRotation: 0 },
+          ticks: { color: INK, font: { family: FONT, size: 13 }, autoSkip: !props.horizontal, maxRotation: 0 },
         },
       },
       plugins: {
         legend: {
           display: props.datasets.length > 1, position: 'bottom', align: 'start',
-          labels: { color: INK, font: { family: FONT, size: 12 }, boxWidth: 10, boxHeight: 10, padding: 14 },
+          labels: { color: INK, font: { family: FONT, size: 13 }, boxWidth: 10, boxHeight: 10, padding: 14 },
         },
         tooltip: {
-          backgroundColor: INK, titleFont: { family: FONT, size: 12 }, bodyFont: { family: FONT, size: 12 }, padding: 10, cornerRadius: 8, displayColors: props.datasets.length > 1,
+          backgroundColor: INK, titleFont: { family: FONT, size: 13 }, bodyFont: { family: FONT, size: 13 }, padding: 10, cornerRadius: 8, displayColors: props.datasets.length > 1,
           callbacks: { label: ctx => ` ${ctx.dataset.label}：${Number(ctx.parsed[valueAxis as 'x' | 'y']).toLocaleString('en-US')}` },
         },
       },
@@ -83,7 +83,7 @@ function build() {
             const { ctx } = c
             ctx.save()
             ctx.fillStyle = INK
-            ctx.font = `600 12px ${FONT}`
+            ctx.font = `600 13px ${FONT}`
             c.getDatasetMeta(0).data.forEach((bar, i) => {
               const value = Number(props.datasets[0]!.data[i] ?? 0)
               // 直向的每日長條：0 不標，免得一排 0

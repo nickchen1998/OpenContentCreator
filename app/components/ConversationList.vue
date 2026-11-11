@@ -136,7 +136,7 @@ async function dismiss() {
     <div ref="listEl" class="conv-cards fill scroll">
       <button v-for="c in shown" :key="c.key" type="button" class="conv-card" @click="open(c.key)">
         <span class="row between" style="gap: 8px; flex-wrap: nowrap">
-          <span class="pf-row bold" style="gap: 6px; font-size: 14px"><PlatformIcon v-if="showPlatform" :platform="account(c.root.accountId)?.platform" :size="14" />{{ c.root.author }}</span>
+          <span class="pf-row bold" style="gap: 6px; font-size: 15px"><PlatformIcon v-if="showPlatform" :platform="account(c.root.accountId)?.platform" :size="14" />{{ c.root.author }}</span>
           <span class="tag" style="flex: none" :style="stateOf(c).style">{{ stateOf(c).label }}</span>
         </span>
         <span class="conv-first">{{ c.root.text }}</span>

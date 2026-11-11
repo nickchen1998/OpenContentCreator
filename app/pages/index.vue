@@ -186,7 +186,7 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
           </NuxtLink>
           <div v-if="!top.length" class="empty">這段期間還沒有貼文的成效</div>
         </div>
-        <div v-if="heat.show" class="col" style="gap: 6px">
+        <div v-if="heat.show" class="col heat-wrap" style="gap: 6px">
           <h3>互動最好的發文時段</h3>
           <div class="heat" role="img" :aria-label="heat.summary">
             <span /><span v-for="d in WEEKDAYS" :key="d" class="small muted" style="text-align: center">{{ d }}</span>

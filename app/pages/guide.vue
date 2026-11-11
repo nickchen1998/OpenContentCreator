@@ -64,7 +64,7 @@ const current = ref(['instagram', 'facebook', 'threads', 'youtube'].includes(rou
         <span class="small"><span class="muted">可以做　</span>{{ s.can }}</span>
         <span class="small"><span class="muted">需要　</span>{{ s.need }}</span>
       </div>
-      <ol class="scroll" style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+      <ol class="scroll" style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 15px">
         <li v-for="step in s.steps" :key="step">{{ step }}</li>
       </ol>
       <div class="col" style="gap: 6px">
@@ -79,7 +79,7 @@ const current = ref(['instagram', 'facebook', 'threads', 'youtube'].includes(rou
       <span class="small"><span class="muted">可以做　</span>留言回覆（每 5 分鐘檢查一次）、成效同步。YouTube 沒有私訊 API。</span>
       <span class="small"><span class="muted">需要　</span>有 YouTube 頻道的 Google 帳號</span>
     </div>
-    <ol style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+    <ol style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: 15px">
       <li>到「帳號」新增一個 YouTube 帳號，按「連結」。</li>
       <li>在 Google 的畫面選擇有頻道的那個帳號。出現「這個應用程式未經 Google 驗證」時，按「進階」再按「前往」。</li>
       <li>同意存取 YouTube 帳戶後會自動回到這裡，帳號顯示「已連結」就完成了。</li>
