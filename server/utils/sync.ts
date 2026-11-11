@@ -12,8 +12,8 @@ export async function syncAccountPosts(platform: LinkedPlatform, connection: Con
   try {
     const token = await unseal(connection.tokenEnc)
     const listed = await listPostsWithStats(platform, token, connection.externalId)
-    const remote = listed.filter(p => !p.repost)
-    const reposts = listed.filter(p => p.repost).map(p => p.id)
+    const remote = listed.filter(p => !p.repost && !p.skip)
+    const reposts = listed.filter(p => p.repost || p.skip).map(p => p.id)
     const known = new Map((await db.select({ externalId: accountPosts.externalId, insightsAt: accountPosts.insightsAt }).from(accountPosts)
       .where(eq(accountPosts.accountId, connection.accountId))).map(r => [r.externalId, r.insightsAt]))
     // 新貼文數字變動快，先抓還沒抓過的，再抓最久沒更新的；兩個月前的貼文不再更新 insight
@@ -34,7 +34,7 @@ export async function syncAccountPosts(platform: LinkedPlatform, connection: Con
         if (/permission|\(#10\)|\(#200\)/i.test(insightError)) break
       }
     }
-    // 先前把轉發當成自己的貼文收進來的，清掉（留言紀錄不受影響）
+    // 先前把轉發、或還沒公開的影片收進來的，清掉（留言紀錄不受影響）
     if (reposts.length) await db.delete(accountPosts).where(and(eq(accountPosts.accountId, connection.accountId), sql`${accountPosts.externalId} in (select value from json_each(${JSON.stringify(reposts)}))`))
     await batchWrites(remote.map((post) => {
       const extra = insights.get(post.id)

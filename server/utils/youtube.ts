@@ -111,8 +111,11 @@ export async function youtubeVideos(refreshToken: string, channelId: string, lim
   const list = await call(refreshToken, '/playlistItems', { query: { part: 'contentDetails', playlistId: String(uploads), maxResults: String(limit) } })
   const ids: string[] = (list.items ?? []).map((i: any) => String(i.contentDetails?.videoId ?? '')).filter(Boolean)
   if (!ids.length) return []
-  const videos = await call(refreshToken, '/videos', { query: { part: 'snippet,statistics', id: ids.join(','), maxResults: '50' } })
+  const videos = await call(refreshToken, '/videos', { query: { part: 'snippet,statistics,status', id: ids.join(','), maxResults: '50' } })
   return (videos.items ?? []).map((v: any) => ({
+    // 還沒公開的不收：排定發布的影片在發布前是「私人」並帶著 publishAt；私人影片也不會有留言。
+    // 標成 skip 的在同步時不會收進來，已經收過的會被清掉（發布之後下一次同步就會再出現）
+    skip: !['public', 'unlisted'].includes(String(v.status?.privacyStatus ?? 'public')) || v.snippet?.liveBroadcastContent === 'upcoming',
     id: String(v.id), url: `https://www.youtube.com/watch?v=${v.id}`, text: String(v.snippet?.title ?? '').slice(0, 500),
     publishedAt: new Date(String(v.snippet?.publishedAt ?? Date.now())).toISOString(), ...metricsOf(v.statistics),
   }))
