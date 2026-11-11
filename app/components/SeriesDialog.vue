@@ -7,7 +7,7 @@ const { accounts, accountLabel } = useLookup()
 type Candidate = InsightPost & { seriesId: number | null, seriesName: string | null }
 const PAGE_SIZE = 8
 const candidates = ref<Candidate[]>([])
-const form = reactive({ name: '', postIds: [] as number[], matchType: 'any' as 'any' | 'keyword', keywords: '', repliesText: '', dmText: '', enabled: true })
+const form = reactive({ name: '', postIds: [] as number[], matchType: 'any' as 'any' | 'keyword', keywords: '', repliesText: '', dmText: '' })
 const tab = ref<number | 'all'>('all')
 const page = ref(1)
 const error = ref('')
@@ -19,7 +19,7 @@ watch(open, async (value) => {
   const s = props.series
   Object.assign(form, {
     name: s?.name ?? '', postIds: s?.posts.map(p => p.id) ?? [], matchType: s?.matchType ?? 'any', keywords: s?.keywords ?? '',
-    repliesText: s?.replies.join('\n') ?? '', dmText: s?.dmText ?? '', enabled: s?.enabled ?? true,
+    repliesText: s?.replies.join('\n') ?? '', dmText: s?.dmText ?? '',
   })
   tab.value = 'all'
   page.value = 1
@@ -47,7 +47,7 @@ async function save() {
   busy.value = true
   error.value = ''
   const body = {
-    name: form.name, postIds: form.postIds, matchType: form.matchType, keywords: form.keywords, enabled: form.enabled,
+    name: form.name, postIds: form.postIds, matchType: form.matchType, keywords: form.keywords,
     replies: form.repliesText.split('\n').map(s => s.trim()).filter(Boolean),
     dmText: form.dmText.trim(),
   }
@@ -109,10 +109,7 @@ async function remove() {
       </section>
 
       <section class="col" style="gap: 12px; min-width: 0">
-        <div class="row between">
-          <h3>有人留言時</h3>
-          <label class="check"><input v-model="form.enabled" type="checkbox">啟用自動回覆</label>
-        </div>
+        <h3>有人留言時</h3>
         <div class="row" role="group" aria-label="觸發條件">
           <button type="button" class="chip" :aria-pressed="form.matchType === 'any'" @click="form.matchType = 'any'">任何留言</button>
           <button type="button" class="chip" :aria-pressed="form.matchType === 'keyword'" @click="form.matchType = 'keyword'">含關鍵字</button>
@@ -120,7 +117,7 @@ async function remove() {
         <label v-if="form.matchType === 'keyword'" class="field">關鍵字（逗號分隔）
           <input v-model="form.keywords" type="text" maxlength="200">
         </label>
-        <label class="field">回覆留言（一行一句，輪流使用）
+        <label class="field">回覆留言（一行一句輪流使用，留空就不回覆）
           <textarea v-model="form.repliesText" rows="4" />
         </label>
         <label class="field">私訊留言者（留空就不私訊）

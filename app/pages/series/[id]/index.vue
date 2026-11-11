@@ -32,7 +32,7 @@ const dmFailed = (c: CommentRow) => c.status === 'sent' && Boolean(c.error)
 const stateOf = (c: CommentRow) => {
   if (failed(c)) return { label: '送出失敗', style: 'background: var(--danger-bg); color: var(--danger)' }
   if (dmFailed(c)) return { label: '已回覆，私訊失敗', style: 'background: var(--warn-bg); color: var(--warn)' }
-  if (c.status === 'sent') return { label: c.dmText ? '已回覆＋私訊' : '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
+  if (c.status === 'sent') return { label: !c.replyText ? '已私訊' : c.dmText ? '已回覆＋私訊' : '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
   if (c.status === 'ready') return { label: '待送出', style: 'background: var(--warn-bg); color: var(--warn)' }
   if (c.status === 'handled') return { label: '已處理', style: 'background: var(--chip-bg); color: var(--muted)' }
   return { label: '未回覆', style: 'background: var(--chip-bg); color: var(--muted)' }
@@ -105,7 +105,6 @@ async function remove(c: CommentRow) {
       <div class="row" style="gap: 12px">
         <NuxtLink to="/series" class="btn-text" style="padding-left: 0">← 系列文管理</NuxtLink>
         <h1 class="wrap-any">{{ series.name }}</h1>
-        <span v-if="series.replies.length && !series.enabled" class="pill muted">已暫停</span>
       </div>
       <button type="button" class="btn" @click="settingsOpen = true">設定系列文</button>
     </div>
