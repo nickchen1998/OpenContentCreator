@@ -46,6 +46,7 @@ function touch() {
 onBeforeUnmount(() => clearTimeout(timer))
 
 const url = computed(() => (import.meta.client ? `${window.location.origin}/p/${state.value?.slug ?? ''}` : ''))
+const host = computed(() => (import.meta.client ? window.location.host : ''))
 async function copyUrl() {
   if (await attempt(() => navigator.clipboard.writeText(url.value))) notify('已複製網址')
 }
@@ -212,6 +213,25 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
               <button v-if="state.images.avatar" type="button" class="btn sm" @click="removeImage('avatar')">移除頭像</button>
               <label class="btn sm">{{ state.images.cover ? '更換背景圖' : '上傳背景圖' }}<input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" :disabled="busy" @change="upload('cover', $event)"></label>
               <button v-if="state.images.cover" type="button" class="btn sm" @click="removeImage('cover')">移除背景圖</button>
+            </div>
+          </div>
+
+          <div class="col" style="gap: 8px">
+            <h2>分享預覽</h2>
+            <div class="share-row">
+              <div class="col" style="gap: 8px; flex: 1 1 220px; min-width: 0">
+                <label class="field">標題<input v-model="draft.shareTitle" type="text" maxlength="60" :placeholder="draft.name" @input="touch"></label>
+                <label class="field">說明<textarea v-model="draft.shareText" rows="2" maxlength="160" :placeholder="draft.bio" style="resize: none" @input="touch" /></label>
+              </div>
+              <!-- 貼到 LINE 之類的地方時大概的樣子：圖片（有背景圖用背景圖，否則頭像）、標題、說明、網域 -->
+              <div class="share-card" aria-label="分享預覽的樣子">
+                <div class="share-image" :style="state.view.share.image ? { backgroundImage: `url('${state.view.share.image}')` } : undefined" />
+                <div class="col" style="gap: 2px; padding: 10px 12px; min-width: 0">
+                  <span class="bold share-clip">{{ state.view.share.title }}</span>
+                  <span v-if="state.view.share.text" class="small muted share-clip two">{{ state.view.share.text }}</span>
+                  <span class="small muted">{{ host }}</span>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -28,12 +28,15 @@ export interface PageConfig {
   textTitle: string
   textBody: string
   links: { label: string, url: string }[]
+  /** 網址貼到 LINE、Facebook 等地方時預覽卡片上的標題與說明；留空就用名稱與介紹 */
+  shareTitle: string
+  shareText: string
 }
 
 export const defaultPageConfig = (name = ''): PageConfig => ({
   name, bio: '', theme: 'night', accent: '', bg: '',
   blocks: PAGE_BLOCKS.map(type => ({ type, on: type === 'profile' || type === 'accounts' })),
-  postIds: [], seriesIds: [], textTitle: '', textBody: '', links: [],
+  postIds: [], seriesIds: [], textTitle: '', textBody: '', links: [], shareTitle: '', shareText: '',
 })
 
 /** 對外輸出的內容：只有打開的區塊才有資料 */
@@ -54,6 +57,8 @@ export interface PageView {
   textTitle: string
   textBody: string
   links: { label: string, url: string }[]
+  /** 分享預覽實際會用的標題、說明與圖片（已經套過「留空就用名稱與介紹」「有背景圖用背景圖，否則用頭像」） */
+  share: { title: string, text: string, image: string }
 }
 
 // ---- 配色 ----

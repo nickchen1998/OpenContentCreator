@@ -13,8 +13,8 @@ export default defineNuxtConfig({
       wrangler: {
         assets: {
           not_found_handling: 'single-page-application',
-          // 新的 server route 要放在這些路徑底下，否則會被靜態資產接走
-          run_worker_first: ['/api/*', '/mcp', '/mcp/*'],
+          // 新的 server route 要放在這些路徑底下，否則會被靜態資產接走。/p/* 是公開頁面：要先經過 Worker 把分享預覽的標籤寫進 HTML
+          run_worker_first: ['/api/*', '/mcp', '/mcp/*', '/p/*'],
         },
       },
     },

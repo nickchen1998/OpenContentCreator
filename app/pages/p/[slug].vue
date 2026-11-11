@@ -15,10 +15,11 @@ onMounted(async () => {
 })
 // 全站預設不給搜尋引擎收錄；公開頁面是要給人找到的，這一頁改成可以收錄
 useHead(() => ({
-  title: view.value?.name ? `${view.value.name}｜OpenContentCreator` : 'OpenContentCreator',
+  // 標題與說明跟伺服器寫進 HTML 的分享預覽一致（server/routes/p/[slug].ts）
+  title: view.value?.share.title ?? 'OpenContentCreator',
   meta: [
     { name: 'robots', content: view.value ? 'index, follow' : 'noindex' },
-    ...(view.value?.bio ? [{ name: 'description', content: view.value.bio }] : []),
+    ...(view.value?.share.text ? [{ name: 'description', content: view.value.share.text }] : []),
   ],
 }))
 </script>
