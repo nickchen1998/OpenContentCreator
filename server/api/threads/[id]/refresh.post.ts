@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   if (!found) return { rows: await loadThreadReplies(thread), warning: '' }
   let warning = ''
   try {
-    warning = await importThreadConversations(found.connection, uid, [{ id: thread.externalId, text: thread.text, inSeries: thread.seriesId }], 12)
+    warning = await importThreadConversations(found.connection, uid, [{ id: thread.externalId, text: thread.text, inSeries: thread.seriesId }], 8)
   }
   catch (e) {
     warning = `讀取 Threads 回覆失敗：${(e as Error).message}`.slice(0, 300)

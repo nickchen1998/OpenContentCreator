@@ -68,9 +68,12 @@ async function refresh() {
 
 async function sync() {
   syncing.value = true
+  // 成效數字與對話分兩個請求（各自有對外請求的上限）：先同步貼文與數字，再抓最新幾則貼文的整串對話
   const data = await attempt(() => api<{ errors: string[] }>('/api/insights/sync', { method: 'POST' }))
+  const talk = await attempt(() => api<{ errors: string[] }>('/api/threads/refresh', { method: 'POST' }))
   syncing.value = false
-  if (data) notify(data.errors.length ? data.errors.join('；') : '已同步')
+  const errors = [...(data?.errors ?? []), ...(talk?.errors ?? [])]
+  if (data || talk) notify(errors.length ? errors.join('；') : '已同步')
   await load()
   if (selectedId.value) await pick(selectedId.value)
 }
