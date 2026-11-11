@@ -115,6 +115,10 @@ export const comments = sqliteTable('comments', {
   error: text('error').notNull().default(''), // 送出失敗時平台回的錯誤
   // 這則留言屬於哪個系列文（留言所在的貼文當時歸在哪個系列）。系列刪掉後變成 null，紀錄本身留著
   collectionId: integer('collection_id').references(() => collections.id, { onDelete: 'set null' }),
+  // 對話串：這則是回覆哪一則留言（平台上的 id）；直接回在貼文底下的是空字串
+  parentExternalId: text('parent_external_id').notNull().default(''),
+  // 這則是不是帳號自己發的（自動或手動送出的回覆、Threads 的子文）。自己發的 status 一律是 own，不算進任何留言數
+  mine: integer('mine', { mode: 'boolean' }).notNull().default(false),
 }, t => [index('comments_account_idx').on(t.accountId, t.createdAt), uniqueIndex('comments_external_idx').on(t.accountId, t.externalId)])
 
 // 帳號與平台 API 的連結。Meta 的部分由會員用自己的 Meta App 產生 token 貼進來（只服務自己的帳號，不用 App Review）。

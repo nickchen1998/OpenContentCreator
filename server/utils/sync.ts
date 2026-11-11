@@ -160,30 +160,60 @@ export async function pollThreads(maxConnections = 3) {
     try {
       const token = await unseal(connection.tokenEnc)
       // 已同步的貼文都會輪到（串文管理頁要看得到每則的回覆），每輪最多 THREADS_PER_POLL 則（每則 1 個請求）
-      const known = await db.select({ id: accountPosts.externalId, inSeries: collectionPosts.collectionId }).from(accountPosts)
+      const known = await db.select({ id: accountPosts.externalId, text: accountPosts.text, inSeries: collectionPosts.collectionId }).from(accountPosts)
         .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .where(eq(accountPosts.accountId, connection.accountId)).orderBy(desc(accountPosts.publishedAt)).limit(200)
       const threads = pickForPoll(known, Math.floor(Date.now() / 300_000))
       if (!threads.length) continue
-      // 已經收過的回覆一次查出來，不要每則回覆查一次（Free 方案每次 50 個 D1 查詢）
-      const seen = new Set((await db.select({ externalId: comments.externalId }).from(comments)
+      // 已經收過的一次查出來，不要每則查一次（Free 方案每次 50 個 D1 查詢）
+      const stored = await db.select({ externalId: comments.externalId, parentExternalId: comments.parentExternalId, mine: comments.mine }).from(comments)
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId)))
-        .orderBy(sql`${comments.id} desc`).limit(500)).map(r => r.externalId))
+        .orderBy(sql`${comments.id} desc`).limit(2000)
+      const seen = new Set(stored.map(r => r.externalId))
+      // 子文：帳號自己接在主文（或另一則子文）下面的貼文。回在子文底下的留言跟回在主文底下的一樣算「留言」
+      const parts = new Set<string>()
+      for (let grew = true; grew;) {
+        grew = false
+        for (const r of stored) {
+          if (r.mine && r.externalId && !parts.has(r.externalId) && (r.parentExternalId === '' || parts.has(r.parentExternalId))) {
+            parts.add(r.externalId)
+            grew = true
+          }
+        }
+      }
       let boot: OwnedBoot | undefined
       let handled = 0
       for (const thread of threads) {
-        const replies = await listThreadReplies(token, thread.id)
-        const fresh = replies.filter(r => !seen.has(r.id) && r.timestamp && r.text.trim() && r.username !== connection.externalName).reverse()
-        // 回一則 Threads 要 2 個請求、每則還要幾個 D1 查詢，一個帳號一輪最多處理 6 則，剩下的下一輪再處理
-        for (const reply of fresh.slice(0, Math.max(0, 6 - handled))) {
+        // conversation 一次拿到整串（含回覆的回覆與自己的回覆）；讀不到就退回只看第一層
+        const nodes = await listThreadConversation(token, thread.id).catch(async () =>
+          (await listThreadReplies(token, thread.id)).map(r => ({ ...r, parentId: thread.id, mine: false })).reverse())
+        const own: (typeof comments.$inferInsert)[] = []
+        for (const node of nodes) {
+          const parent = node.parentId === thread.id ? '' : node.parentId
+          if (!node.timestamp || !node.text.trim()) continue
+          const at = new Date(node.timestamp).toISOString()
+          if (node.mine || node.username === connection.externalName) {
+            if (parent === '' || parts.has(parent)) parts.add(node.id)
+            if (!seen.has(node.id)) {
+              own.push({
+                accountId: connection.accountId, collectionId: thread.inSeries, postTitle: thread.text, author: `@${connection.externalName}`, text: node.text,
+                createdAt: at, status: 'own', mine: true, kind: 'comment', externalId: node.id, externalPostId: thread.id, parentExternalId: parent,
+              })
+            }
+            continue
+          }
+          // 回一則 Threads 要 2 個請求、每則還要幾個 D1 查詢，一個帳號一輪最多處理 6 則，剩下的下一輪再處理
+          if (seen.has(node.id) || handled >= 6) continue
           handled++
           boot ??= await loadBoot(ownerId)
-          const at = new Date(reply.timestamp).toISOString()
-          const incoming = { externalId: reply.id, senderId: reply.username, author: `@${reply.username}`, text: reply.text, externalPostId: thread.id }
-          // 連結之前就在的舊回覆只記錄、不自動送出（命中系列文設定的會是「待送出」），否則一連結就會對歷史留言洗一輪
-          if (at > connection.createdAt) await receive(boot, 'threads', connection, incoming)
-          else await processComment(boot, { accountId: connection.accountId, ...incoming, at }).catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
+          const top = parent === '' || parts.has(parent)
+          const incoming = { externalId: node.id, senderId: node.username, author: `@${node.username}`, text: node.text, externalPostId: thread.id }
+          // 對話裡的後續回覆只記錄；連結之前就在的舊留言也只記錄、不自動送出（命中系列文設定的會是「待送出」），否則一連結就會對歷史留言洗一輪
+          if (top && at > connection.createdAt) await receive(boot, 'threads', connection, { ...incoming, parentExternalId: parent })
+          else await processComment(boot, { accountId: connection.accountId, ...incoming, at, parentExternalId: parent, nested: !top }).catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
         }
+        // 一個 statement 最多 100 個參數，一列十幾個
+        for (let i = 0; i < own.length; i += 6) await db.insert(comments).values(own.slice(i, i + 6)).onConflictDoNothing()
       }
       if (connection.lastError) await db.update(connections).set({ lastError: '' }).where(eq(connections.id, connection.id))
     }

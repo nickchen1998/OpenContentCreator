@@ -11,6 +11,10 @@ export interface Incoming {
   senderId: string
   /** 留言在平台上的時間。補抓舊留言時帶進來，紀錄才會排在正確的位置，也不會吃掉「每小時回覆上限」 */
   at?: string
+  /** 回覆的是哪一則留言；直接回在貼文（或 Threads 子文）底下的不用帶 */
+  parentExternalId?: string
+  /** 對話裡的後續回覆（回覆別人的留言、回覆我們的回覆）：只記錄，不跑自動回覆，否則會跟人來回洗版 */
+  nested?: boolean
 }
 
 /**
@@ -41,18 +45,19 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
   const record = {
     accountId: input.accountId, kind: 'comment', postTitle: found[0]?.postText ?? '',
     author: input.author, text: input.text, createdAt: input.at ?? nowIso(),
-    externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId,
+    externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId, parentExternalId: input.parentExternalId ?? '',
   }
   if (!series) {
     // 貼文不在任何系列文裡：Threads 照樣記下來（串文管理頁要看得到、由會員手動回），其他平台不處理也不記錄
     if (account.platform !== 'threads') return
-    return insert({ ...record, status: 'unmatched', reason: '未歸入系列文' })
+    return insert({ ...record, status: 'unmatched', reason: input.nested ? '對話中的回覆' : '未歸入系列文' })
   }
+  if (input.nested) return insert({ ...record, collectionId: series.id, ruleName: series.name, status: 'unmatched', reason: '對話中的回覆' })
 
   const base = {
     accountId: input.accountId, collectionId: series.id, ruleName: series.name, kind: 'comment', postTitle: found[0]!.postText,
     author: input.author, text: input.text, createdAt: input.at ?? nowIso(),
-    externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId,
+    externalId: input.externalId, externalPostId: input.externalPostId, senderId: input.senderId, parentExternalId: input.parentExternalId ?? '',
   }
   // 留言後私訊只有 Instagram 與 Facebook 做得到；系列裡其他平台的貼文只回留言
   const withDm = Boolean(series.dmText) && (account.platform === 'instagram' || account.platform === 'facebook')

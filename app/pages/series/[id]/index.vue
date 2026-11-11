@@ -5,8 +5,6 @@ const { accountLabel, account } = useLookup()
 const series = ref<Series>()
 const comments = ref<CommentRow[]>([])
 const missing = ref(false)
-const filter = ref<'all' | 'failed' | 'open'>('all')
-const busyId = ref(0)
 const settingsOpen = ref(false)
 const backToList = () => navigateTo('/series')
 
@@ -25,33 +23,6 @@ onMounted(load)
 const totals = computed(() => totalsOf(series.value?.posts ?? []))
 const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toFixed(1)}%` : '—')
 const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480).slice(0, 10))
-const timeOf = (iso: string) => minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480).replace('T', ' ').slice(5)
-// 每則貼文收到幾則留言、送出幾則私訊（留言紀錄裡同一個帳號、同一段貼文文字的）
-const failed = (c: CommentRow) => c.status === 'ready' && Boolean(c.error)
-const dmFailed = (c: CommentRow) => c.status === 'sent' && Boolean(c.error)
-const stateOf = (c: CommentRow) => {
-  if (failed(c)) return { label: '送出失敗', style: 'background: var(--danger-bg); color: var(--danger)' }
-  if (dmFailed(c)) return { label: '已回覆，私訊失敗', style: 'background: var(--warn-bg); color: var(--warn)' }
-  if (c.status === 'sent') return { label: !c.replyText ? '已私訊' : c.dmText ? '已回覆＋私訊' : '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
-  if (c.status === 'ready') return { label: '待送出', style: 'background: var(--warn-bg); color: var(--warn)' }
-  if (c.status === 'handled') return { label: '已處理', style: 'background: var(--chip-bg); color: var(--muted)' }
-  return { label: '未回覆', style: 'background: var(--chip-bg); color: var(--muted)' }
-}
-const filtered = computed(() => comments.value.filter(c =>
-  filter.value === 'all' || (filter.value === 'failed' ? failed(c) || dmFailed(c) : c.status === 'unmatched' || c.status === 'skipped' || c.status === 'ready')))
-// 留言紀錄：在區塊內捲動，每頁 10 則
-const PAGE_SIZE = 10
-const page = ref(1)
-const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
-const shown = computed(() => filtered.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
-const logEl = ref<HTMLElement>()
-function goPage(n: number) {
-  page.value = Math.min(Math.max(1, n), pages.value)
-  logEl.value?.scrollTo({ top: 0 })
-}
-watch([filter, () => comments.value.length], () => goPage(Math.min(page.value, pages.value)))
-watch(filter, () => goPage(1))
-
 // 成效統計的圖表資料
 const SERIES_GREEN = '#3e5346'
 // 互動組成的四個顏色經過色盲辨識度檢查（dataviz 的 validate_palette），順序固定不要調換
@@ -77,6 +48,7 @@ const daily = computed(() => {
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13))
   const counts = new Map(days.map(d => [d, 0]))
   for (const c of comments.value) {
+    if (c.mine) continue
     const day = minutesToAt(Math.floor(Date.parse(c.createdAt) / 60000) + 480).slice(0, 10)
     if (counts.has(day)) counts.set(day, counts.get(day)! + 1)
   }
@@ -85,17 +57,6 @@ const daily = computed(() => {
 const viewsSummary = computed(() => `各貼文觀看：${(series.value?.posts ?? []).map((p, i) => `${postLabels.value[i]} ${p.views}`).join('、')}`)
 const partsSummary = computed(() => `各貼文互動組成：${(series.value?.posts ?? []).map((p, i) => `${postLabels.value[i]} 按讚 ${p.likes}、留言 ${p.comments}、分享 ${p.shares}、收藏 ${p.saves}`).join('；')}`)
 
-async function send(c: CommentRow) {
-  busyId.value = c.id
-  const row = await attempt(() => api<CommentRow>(`/api/comments/${c.id}/send`, { method: 'POST' }), '已送出')
-  busyId.value = 0
-  if (row) Object.assign(c, row)
-  else await load()
-}
-async function remove(c: CommentRow) {
-  if (!confirm('刪除這筆留言紀錄？')) return
-  if (await attempt(() => api(`/api/comments/${c.id}`, { method: 'DELETE' }))) comments.value = comments.value.filter(x => x.id !== c.id)
-}
 </script>
 
 <template>
@@ -165,36 +126,8 @@ async function remove(c: CommentRow) {
       </section>
 
       <section class="card">
-        <div class="row between">
-          <h2>留言紀錄</h2>
-          <div class="row" role="group" aria-label="篩選留言">
-            <button type="button" class="chip" :aria-pressed="filter === 'all'" @click="filter = 'all'">全部</button>
-            <button type="button" class="chip" :aria-pressed="filter === 'failed'" @click="filter = 'failed'">送出失敗</button>
-            <button type="button" class="chip" :aria-pressed="filter === 'open'" @click="filter = 'open'">未回覆</button>
-          </div>
-        </div>
-        <!-- 留言紀錄在自己的區塊裡捲動 -->
-        <div ref="logEl" class="comment-log fill scroll" tabindex="0" aria-label="留言紀錄">
-          <div v-for="c in shown" :key="c.id" class="comment-item">
-            <div class="row between" style="gap: 6px 12px">
-              <span class="small muted pf-row" style="gap: 6px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="14" />{{ c.author }} · {{ timeOf(c.createdAt) }}</span>
-              <span class="tag" :style="stateOf(c).style">{{ stateOf(c).label }}</span>
-            </div>
-            <span class="wrap-any">{{ c.text }}</span>
-            <div v-if="c.error" class="error">{{ c.error }}</div>
-            <div v-else-if="c.status === 'unmatched' || c.status === 'skipped'" class="small muted">{{ c.reason }}</div>
-            <div class="row">
-              <button v-if="c.status === 'ready' && c.externalId" type="button" class="btn sm" :disabled="busyId === c.id" @click="send(c)">{{ c.error ? '重送' : '送出回覆' }}</button>
-              <button type="button" class="btn sm" :aria-label="`刪除 ${c.author} 的留言紀錄`" @click="remove(c)">刪除</button>
-            </div>
-          </div>
-          <div v-if="!shown.length" class="empty">沒有紀錄</div>
-        </div>
-        <div v-if="pages > 1" class="row between" role="navigation" aria-label="留言紀錄分頁">
-          <button type="button" class="btn sm" :disabled="page <= 1" @click="goPage(page - 1)">上一頁</button>
-          <span class="small muted" aria-live="polite">第 {{ page }} / {{ pages }} 頁</span>
-          <button type="button" class="btn sm" :disabled="page >= pages" @click="goPage(page + 1)">下一頁</button>
-        </div>
+        <h2>留言紀錄</h2>
+        <ConversationList :rows="comments" show-platform @changed="load" />
       </section>
     </div>
 

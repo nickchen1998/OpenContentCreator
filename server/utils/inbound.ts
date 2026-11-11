@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { accounts, comments, connections } from '../database/schema'
+import { accountPosts, accounts, collectionPosts, comments, connections } from '../database/schema'
 
 type Connection = typeof connections.$inferSelect
 type CommentRecord = typeof comments.$inferSelect
@@ -29,7 +29,14 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
   let error = ''
   try {
     const token = await unseal(connection.tokenEnc)
-    if (row.replyText) await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
+    if (row.replyText) {
+      const sent = await replyToComment(platform, token, connection.externalId, row.externalId, row.replyText)
+      // 送出的回覆自己記一筆，對話串才有「我的回覆」；平台之後把同一則送回來（webhook／輪詢）時會撞到同一個 id，不會重複
+      await recordOwn(connection, {
+        externalId: String(sent?.id ?? ''), parentExternalId: row.externalId, externalPostId: row.externalPostId, text: row.replyText,
+        reason: row.reason === '手動回覆' ? '手動回覆' : '自動回覆', collectionId: row.collectionId, postTitle: row.postTitle,
+      }).catch(() => {})
+    }
     // 只私訊、不回留言的：私訊失敗就是整筆失敗，維持待送出可以重送
     if (row.dmText && !row.replyText) await privateReply(platform, token, connection.externalId, row.externalId, row.dmText)
     else if (row.dmText) {
@@ -53,6 +60,44 @@ export async function deliver(platform: MetaPlatform, connection: Connection, ro
   return sent!
 }
 
+interface OwnMessage {
+  externalId: string
+  parentExternalId: string
+  externalPostId: string
+  text: string
+  at?: string
+  /** 自動回覆／手動回覆；從平台收回來、不知道怎麼發的留空 */
+  reason?: string
+  collectionId?: number | null
+  postTitle?: string
+  /** 貼文不在系列文裡就不記（Instagram、Facebook 只記系列文裡的） */
+  onlyInSeries?: boolean
+}
+
+/** 記下一則帳號自己發的留言（送出的回覆、在平台上自己回的）。status 一律是 own，不算進任何留言數 */
+export async function recordOwn(connection: Connection, message: OwnMessage) {
+  if (!message.externalId || !message.text.trim()) return
+  const db = useDb()
+  let { collectionId, postTitle } = message
+  if (collectionId === undefined) {
+    const [post] = await db.select({ text: accountPosts.text, collectionId: collectionPosts.collectionId }).from(accountPosts)
+      .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
+      .where(and(eq(accountPosts.accountId, connection.accountId), eq(accountPosts.externalId, message.externalPostId)))
+    collectionId = post?.collectionId ?? null
+    postTitle = post?.text ?? ''
+  }
+  if (message.onlyInSeries && collectionId == null) return
+  const reason = message.reason ?? ''
+  const insert = db.insert(comments).values({
+    accountId: connection.accountId, collectionId: collectionId ?? null, postTitle: postTitle ?? '', author: `@${connection.externalName}`, text: message.text,
+    createdAt: message.at ?? nowIso(), status: 'own', mine: true, kind: 'comment', reason,
+    externalId: message.externalId, externalPostId: message.externalPostId, parentExternalId: message.parentExternalId,
+  })
+  // 已經從平台收回來過的同一則：只補上「自動／手動」的標記
+  if (reason) await insert.onConflictDoUpdate({ target: [comments.accountId, comments.externalId], set: { reason } })
+  else await insert.onConflictDoNothing()
+}
+
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : '送出失敗').slice(0, 300)
 
 interface InboundEvent {
@@ -61,14 +106,23 @@ interface InboundEvent {
   author: string
   text: string
   externalPostId: string
+  /** 回覆的是哪一則留言；Threads 回在子文底下的留言也會帶（那種不算 nested） */
+  parentExternalId?: string
+  /** 對話裡的後續回覆（回覆別人的留言、回覆我們的回覆）：只記錄，不自動回 */
+  nested?: boolean
 }
 
 /** 從 webhook（或 Threads 輪詢）收進一則留言或私訊：去重 → 跑規則 → 連結開著自動送出就直接回 */
 export async function receive(boot: OwnedBoot, platform: MetaPlatform, connection: Connection, event: InboundEvent) {
   const db = useDb()
   // 自己發的（包含我們剛送出的回覆）不處理，否則會自己回自己
-  const self = event.senderId === connection.externalId || event.senderId === connection.externalName
-  if (!event.externalId || !event.text.trim() || self) return
+  const self = event.senderId === connection.externalId || event.senderId === connection.externalName || event.author === `@${connection.externalName}`
+  if (!event.externalId || !event.text.trim()) return
+  if (self) {
+    // 但要記下來，對話串才看得到「我的回覆」（包含在平台 App 上自己打的）
+    if (event.parentExternalId) await recordOwn(connection, { externalId: event.externalId, parentExternalId: event.parentExternalId, externalPostId: event.externalPostId, text: event.text, onlyInSeries: platform !== 'threads' })
+    return
+  }
   const [seen] = await db.select({ id: comments.id }).from(comments)
     .where(and(eq(comments.accountId, connection.accountId), eq(comments.externalId, event.externalId)))
   if (seen) return // Meta 會重送同一個事件
@@ -93,11 +147,14 @@ export function eventsOf(platform: 'instagram' | 'facebook', entry: any): Inboun
   for (const change of entry?.changes ?? []) {
     const v = change?.value ?? {}
     if (platform === 'instagram' && change.field === 'comments') {
-      events.push({ externalId: String(v.id ?? ''), senderId: String(v.from?.id ?? ''), author: v.from?.username ? `@${v.from.username}` : '（未知）', text: String(v.text ?? ''), externalPostId: String(v.media?.id ?? '') })
+      // 回覆別人留言的留言會帶 parent_id
+      events.push({ externalId: String(v.id ?? ''), senderId: String(v.from?.id ?? ''), author: v.from?.username ? `@${v.from.username}` : '（未知）', text: String(v.text ?? ''), externalPostId: String(v.media?.id ?? ''), parentExternalId: v.parent_id ? String(v.parent_id) : undefined, nested: Boolean(v.parent_id) })
     }
     // 粉專的 feed 事件什麼都有（貼文、按讚、編輯…），只收「新增留言」
     if (platform === 'facebook' && change.field === 'feed' && v.item === 'comment' && v.verb === 'add') {
-      events.push({ externalId: String(v.comment_id ?? ''), senderId: String(v.from?.id ?? ''), author: String(v.from?.name ?? '（未知）'), text: String(v.message ?? ''), externalPostId: String(v.post_id ?? '') })
+      // 粉專的 parent_id：直接留在貼文底下的是貼文 id，回覆別人留言的是那則留言的 id
+      const parent = v.parent_id && String(v.parent_id) !== String(v.post_id ?? '') ? String(v.parent_id) : undefined
+      events.push({ externalId: String(v.comment_id ?? ''), senderId: String(v.from?.id ?? ''), author: String(v.from?.name ?? '（未知）'), text: String(v.message ?? ''), externalPostId: String(v.post_id ?? ''), parentExternalId: parent, nested: Boolean(parent) })
     }
   }
   // 私訊不處理：這個系統只做「留言 → 回覆留言＋私訊留言者」，不做私訊自動回覆（使用者的決定）
