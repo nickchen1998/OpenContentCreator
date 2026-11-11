@@ -1,0 +1,67 @@
+import type { Platform, ProjectColor } from './platforms'
+
+export interface Account { id: number, groupId: number, platform: Platform, name: string }
+export interface Group { id: number, name: string, topic: string, accounts: Account[] }
+export interface Grant { groupId: number, priority: number, canReadInsights: boolean }
+export interface Project { id: number, name: string, color: ProjectColor, tokenPrefix: string, grants: Grant[] }
+export interface Rules { minGapHours: number, maxPerDay: number, replyPerHour: number }
+export interface Boot { groups: Group[], projects: Project[], rules: Rules }
+
+export type PostStatus = 'scheduled' | 'pending' | 'rejected' | 'withdrawn'
+export interface Target {
+  id: number
+  accountId: number
+  caption: string
+  publishedUrl: string
+  publishedAt: string | null
+  views: number
+  likes: number
+  comments: number
+  shares: number
+  saves: number
+  metricsUpdatedAt: string | null
+}
+export interface Post {
+  id: number
+  groupId: number
+  projectId: number | null
+  title: string
+  scheduledAt: string
+  status: PostStatus
+  source: 'web' | 'mcp'
+  note: string
+  createdAt: string
+  targets: Target[]
+  /** 違反協調規則的原因；空陣列就是沒有撞期 */
+  conflicts: string[]
+}
+export interface Asset { id: number, postId: number, filename: string, contentType: string, size: number, note: string }
+
+export interface ReplyRule {
+  id: number
+  name: string
+  groupId: number
+  accountId: number | null
+  postId: number | null
+  matchType: 'keyword' | 'any'
+  keywords: string
+  action: 'reply' | 'reply_dm'
+  replies: string[]
+  dmText: string
+  enabled: boolean
+}
+export type CommentStatus = 'ready' | 'sent' | 'unmatched' | 'skipped' | 'handled'
+export interface CommentRow {
+  id: number
+  accountId: number
+  postTitle: string
+  author: string
+  text: string
+  createdAt: string
+  ruleId: number | null
+  ruleName: string
+  replyText: string
+  dmText: string
+  reason: string
+  status: CommentStatus
+}

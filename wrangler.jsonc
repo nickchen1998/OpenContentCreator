@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // main 與 assets 由 Nitro 建置時補上（輸出到 .output/server/wrangler.json），這裡不要寫。
+  "name": "opencontentcreator",
+  "routes": [{ "pattern": "opencontentcreator.codeworldbagel.com", "custom_domain": true }],
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "opencontentcreator",
+      "database_id": "b95426fc-1479-42b3-a5e1-38141605dcc5",
+      "migrations_dir": "server/database/migrations"
+    }
+  ],
+  // 貼文素材。key 是 assets/<postId>/<uuid>，metadata 在 D1 的 assets 表
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "opencontentcreator-media" }]
+}
