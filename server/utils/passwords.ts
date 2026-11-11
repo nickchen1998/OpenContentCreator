@@ -24,6 +24,16 @@ export async function verifyPassword(password: string, stored: string) {
   return diff === 0
 }
 
+/**
+ * 密碼的「版本」：登入時放進 session（只有伺服器看得到的 secure 區塊），每個請求比對一次。
+ * 密碼一改，雜湊就變、版本跟著變，所有舊的登入立刻失效（被偷走的 session 也是）。
+ */
+export const passwordVersion = async (passwordHash: string) => (await sha256(`session:${passwordHash}`)).slice(0, 24)
+
+// 帳號不存在時也照樣做一次同樣成本的運算，回應時間才不會洩漏帳號存不存在。內容不是秘密，也對不上任何密碼
+const DUMMY_HASH = `pbkdf2$${ITERATIONS}$${'00'.repeat(16)}$${'00'.repeat(32)}`
+export const verifyDummyPassword = (password: string) => verifyPassword(password, DUMMY_HASH)
+
 /** 給管理員建立帳號、重設密碼時用的隨機密碼（去掉容易看錯的字） */
 export function randomPassword(length = 14) {
   const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'

@@ -1,0 +1,9 @@
+# 靜態頁面（SPA 外殼與資產）的安全標頭。/api 與 /mcp 由 Worker 回應，不走這裡。
+# 沒有限制 script-src／style-src：Nuxt 的外殼有內嵌的啟動腳本，頁面也大量用行內樣式，限制了會整站壞掉。
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

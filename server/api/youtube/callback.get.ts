@@ -5,22 +5,24 @@ import { connections } from '../../database/schema'
 export default defineEventHandler(async (event) => {
   const uid = uidOf(event)
   const q = getQuery(event)
-  const back = (message: string) => sendRedirect(event, `/accounts?youtube=${encodeURIComponent(message)}`)
-  if (q.error) return back(q.error === 'access_denied' ? '你沒有同意授權' : `Google 回報：${q.error}`)
+  // 回到帳號頁時網址上只帶固定的代碼，文字由頁面對照；不把 Google 或任何人給的字串直接帶回去顯示
+  const back = (code: 'ok' | 'denied' | 'google' | 'invalid' | 'expired' | 'account' | 'notconfigured' | 'nochannel' | 'norefresh' | 'failed') =>
+    sendRedirect(event, `/accounts?youtube=${code}`)
+  if (q.error) return back(q.error === 'access_denied' ? 'denied' : 'google')
   let state: { uid: number, accountId: number, at: number }
   try {
     state = JSON.parse(await unseal(String(q.state ?? '')))
   }
   catch {
-    return back('連結的請求無效，請再試一次')
+    return back('invalid')
   }
-  if (state.uid !== uid || Date.now() - state.at > 15 * 60_000) return back('連結的請求過期了，請再試一次')
+  if (state.uid !== uid || Date.now() - state.at > 15 * 60_000) return back('expired')
   const boot = await loadBoot(uid)
   const account = boot.accounts.find(a => a.id === state.accountId)
-  if (!account || account.platform !== 'youtube') return back('找不到要連結的帳號')
+  if (!account || account.platform !== 'youtube') return back('account')
   try {
     const tokens = await youtubeExchangeCode(String(q.code ?? ''), `${getRequestURL(event).origin}/api/youtube/callback`)
-    if (!tokens.refresh_token) throw new YoutubeError('Google 沒有給長期授權，請到 Google 帳號的「第三方應用程式存取權」移除這個應用程式後再連結一次')
+    if (!tokens.refresh_token) throw new YoutubeError('Google 沒有給長期授權', 'norefresh')
     const channel = await youtubeChannel(tokens.refresh_token, tokens.access_token)
     const values = {
       accountId: account.id, ...channel, tokenEnc: await seal(tokens.refresh_token), appSecretEnc: await seal(''),
@@ -30,6 +32,8 @@ export default defineEventHandler(async (event) => {
     return back('ok')
   }
   catch (e) {
-    return back((e as Error).message.slice(0, 200))
+    // 真正的原因記在 log（wrangler tail 看得到），不帶回網址
+    console.warn('youtube connect failed', (e as Error).message)
+    return back((e instanceof YoutubeError && e.code) || 'failed')
   }
 })
