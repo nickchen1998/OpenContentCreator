@@ -37,6 +37,13 @@ watch(() => props.rows[0]?.externalPostId, () => {
 const timeOf = (iso: string) => minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480).replace('T', ' ').slice(5).replace('-', '/')
 const whereOf = (index: number) => (index ? `子文 ${index + 1}` : '主文')
 
+// 卡片的狀態：最後一句是對方說的 → 待回覆；按了「不用回」→ 不回（不是已回覆，因為實際上沒有回）
+function stateOf(c: { waiting: boolean, last: CommentRow }) {
+  if (c.waiting) return { label: '待回覆', style: 'background: var(--warn-bg); color: var(--warn)' }
+  if (!c.last.mine && c.last.status === 'handled') return { label: '不回', style: 'background: var(--chip-bg); color: var(--muted)' }
+  return { label: '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
+}
+
 interface Message { key: string, who: string, at: string, text: string, mine: boolean, tag: string, row?: CommentRow }
 const current = computed(() => grouped.value.conversations.find(c => c.key === openKey.value))
 const messages = computed<Message[]>(() => {
@@ -100,7 +107,7 @@ async function dismiss() {
       <button v-for="c in shown" :key="c.key" type="button" class="conv-card" @click="open(c.key)">
         <span class="row between" style="gap: 8px; flex-wrap: nowrap">
           <span class="pf-row bold" style="gap: 6px; font-size: 14px"><PlatformIcon v-if="showPlatform" :platform="account(c.root.accountId)?.platform" :size="14" />{{ c.root.author }}</span>
-          <span class="tag" style="flex: none" :style="c.waiting ? 'background: var(--warn-bg); color: var(--warn)' : 'background: var(--green-soft); color: var(--green-deep)'">{{ c.waiting ? '待回覆' : '已回覆' }}</span>
+          <span class="tag" style="flex: none" :style="stateOf(c).style">{{ stateOf(c).label }}</span>
         </span>
         <span class="conv-first">{{ c.root.text }}</span>
         <span class="row small muted" style="gap: 2px 12px">
@@ -133,6 +140,7 @@ async function dismiss() {
           <span v-if="m.tag" class="tag" style="background: var(--green-soft); color: var(--green-deep)">{{ m.tag }}</span>
         </span>
         <span class="conv-text wrap-any">{{ m.text }}</span>
+        <span v-if="m.row && !m.row.mine && m.row.status === 'handled'" class="small muted">已標成不回</span>
         <template v-if="m.row && !m.row.mine">
           <div v-if="m.row.status === 'ready'" class="col" style="gap: 6px">
             <span class="small wrap-any" style="color: var(--warn)">待送出：{{ m.row.replyText || m.row.dmText }}</span>
