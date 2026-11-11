@@ -49,6 +49,8 @@
   `server/utils/meta.ts` 用 token 開頭分辨，兩種都支援。
 - Facebook 粉專：Meta 後台 Messenger 頁的「產生」只給私訊權限（連粉專基本資料都讀不到），所以連結時收的是「圖形 API 測試工具」
   產生的用戶權杖 + app id + app secret，由 `pageTokenFromUserToken` 換成不會到期的 Page token。直接貼 Page token 也還是收。
+- 成效來自 `account_posts`（`syncAccountPosts` 自動匯入帳號最近的貼文），**跟排程裡的 posts 沒有關聯**；使用者不要手動貼連結
+  或登錄數字的做法。列表那一趟就有按讚與留言數，觀看／分享／收藏要逐則打 insights，所以每次只替最久沒更新的幾則抓。
 - 規則的「指定貼文」存的是平台上的貼文 id（`reply_rules.external_post_id`），不是我們自己的 posts.id。
 - 排程每次只處理少量再輪替（Free 方案每次 50 個對外請求、50 個 D1 查詢）；不要在迴圈裡每筆查一次 D1。
 - 本機觸發排程：`wrangler dev --test-scheduled` 後打 `/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*`。

@@ -163,6 +163,23 @@ export const connections = sqliteTable('connections', {
   autoSend: integer('auto_send', { mode: 'boolean' }).notNull().default(true),
   lastEventAt: text('last_event_at'),
   lastPolledAt: text('last_polled_at'), // Threads 沒有 webhook 可用，靠排程輪詢
+  lastSyncedAt: text('last_synced_at'), // 上次同步貼文與成效的時間，排程用它輪替
   lastError: text('last_error').notNull().default(''),
   createdAt: text('created_at').notNull(),
 }, t => [index('connections_external_idx').on(t.externalId)])
+
+// 帳號在平台上的貼文與成效：連結後由排程自動抓（不用貼連結），成效總覽看的就是這張表
+export const accountPosts = sqliteTable('account_posts', {
+  id: id(),
+  accountId: integer('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  externalId: text('external_id').notNull(),
+  url: text('url').notNull().default(''),
+  text: text('text').notNull().default(''),
+  publishedAt: text('published_at').notNull(), // ISO（UTC）
+  views: integer('views').notNull().default(0),
+  likes: integer('likes').notNull().default(0),
+  comments: integer('comments').notNull().default(0),
+  shares: integer('shares').notNull().default(0),
+  saves: integer('saves').notNull().default(0),
+  insightsAt: text('insights_at'), // 上次抓 insight（觀看、分享、收藏）的時間；按讚與留言數每次同步都會更新
+}, t => [uniqueIndex('account_posts_external_idx').on(t.accountId, t.externalId), index('account_posts_published_idx').on(t.accountId, t.publishedAt)])

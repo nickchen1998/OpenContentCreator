@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
     if (!ctx) {
       // 專案屬於哪個會員，就只看得到那個會員的資料
       const boot = await loadBoot(row.ownerId!)
-      ctx = { boot, project: boot.projects.find(p => p.id === row.id)! }
+      ctx = { boot, project: boot.projects.find(p => p.id === row.id)!, ownerId: row.ownerId! }
     }
     return ctx
   }

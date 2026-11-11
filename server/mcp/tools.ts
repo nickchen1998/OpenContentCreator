@@ -3,7 +3,7 @@ import type { BatchItem } from 'drizzle-orm/batch'
 import { posts, postTargets } from '../database/schema'
 
 /** 連進來的專案：只看得到、只能提案到被授權的群組 */
-export interface McpContext { boot: Boot, project: Project }
+export interface McpContext { boot: Boot, project: Project, ownerId: number }
 
 interface Tool {
   name: string
@@ -137,7 +137,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'get_insights',
-    description: '讀取授權群組近 N 天已發出貼文的成效摘要（各帳號的發文數、觀看、互動，以及表現最好的貼文），用來決定發文時段與題材。數字由站主在 OpenContentCreator 登錄，可能不是即時的。',
+    description: '讀取授權群組近 N 天已發出貼文的成效摘要（各帳號的發文數、觀看、互動，以及表現最好的貼文），用來決定發文時段與題材。數字每 30 分鐘從各平台同步一次。',
     inputSchema: obj({ days: { type: 'integer', minimum: 1, maximum: 90, description: '近幾天，預設 28' }, group_id: { type: 'integer', description: '只看某個群組' } }),
     readOnly: true,
     run: async (args, ctx) => {
@@ -145,17 +145,14 @@ export const TOOLS: Tool[] = [
       const readable = ctx.project.grants.filter(g => g.canReadInsights).map(g => g.groupId)
       const ids = args.group_id == null ? readable : readable.filter(id => id === Number(args.group_id))
       if (!ids.length) throw bad('這個專案沒有讀取成效的權限')
-      const today = todayTaipei()
-      const rows = await loadPosts(ctx.boot, and(
-        inArray(posts.groupId, ids), eq(posts.status, 'scheduled'),
-        gte(posts.scheduledAt, `${addDays(today, -days)}T00:00`), lte(posts.scheduledAt, `${today}T23:59`),
-      ))
+      const ownerId = ctx.ownerId
+      const { posts: rows } = await loadInsights(ownerId, days, ids)
       const summary = summarizeInsights(rows, { ...ctx.boot, groups: ctx.boot.groups.filter(g => ids.includes(g.id)) })
       return {
         days,
         totals: summary.totals,
         accounts: summary.rows.map(r => ({ account_id: r.accountId, name: `${r.groupName}・${PLATFORMS[r.platform].label}`, posts: r.posts, views: r.views, engagement: r.engagement })),
-        top_posts: summary.top.map(t => ({ title: t.title, account: accountLabel(ctx.boot, t.accountId), views: t.views, engagement: t.engagement })),
+        top_posts: summary.top.map(t => ({ text: t.text, url: t.url, account: accountLabel(ctx.boot, t.accountId), published_at: t.publishedAt, views: t.views, engagement: engagementOf(t) })),
       }
     },
   },

@@ -43,6 +43,13 @@
       "when": 1794363832967,
       "tag": "0005_rule_post_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794369554007,
+      "tag": "0006_account_posts",
+      "breakpoints": true
     }
   ]
 }
