@@ -71,8 +71,8 @@ function saved() {
         </div>
         <article v-for="p in d.posts" :key="p.id" class="post" :class="kind(p)">
           <div class="row between" style="gap: 6px">
-            <span class="bold" style="font-size: 13.5px">{{ p.scheduledAt.slice(11) }}</span>
-            <span class="small" :class="`status-${kind(p)}`" style="font-size: 12px">{{ KIND_LABEL[kind(p)] }}</span>
+            <span class="bold" style="font-size: 14.5px">{{ p.scheduledAt.slice(11) }}</span>
+            <span class="small" :class="`status-${kind(p)}`" style="font-size: 13px">{{ KIND_LABEL[kind(p)] }}</span>
           </div>
           <NuxtLink :to="`/posts/${p.id}`" class="title">{{ p.title }}</NuxtLink>
           <div class="row" style="gap: 8px">

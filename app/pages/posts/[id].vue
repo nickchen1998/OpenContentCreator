@@ -120,7 +120,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
     <div class="row between gap-lg">
       <div class="col" style="gap: 8px">
         <h1 class="wrap-any">{{ post.title }}</h1>
-        <div class="row" style="font-size: 14px; color: var(--text-2)">
+        <div class="row" style="font-size: 15px; color: var(--text-2)">
           <span class="tag lg" :style="projectStyle(post.projectId)">{{ projectLabel(post) }}</span>
           <span>預計 {{ fmtAt(post.scheduledAt) }}</span>
           <span class="pf-row"><PlatformIcon v-for="t in post.targets" :key="t.id" :platform="account(t.accountId)?.platform" /></span>
@@ -163,7 +163,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
             <div v-else class="thumb" aria-hidden="true">{{ kind(a) }}</div>
             <div class="col grow">
               <div class="wrap-any" style="font-weight: 500">{{ a.filename }}</div>
-              <input v-model="a.note" type="text" maxlength="100" :aria-label="`${a.filename} 的說明`" placeholder="說明" style="min-height: 36px; padding: 6px 10px; font-size: 13px" @change="saveNote(a)">
+              <input v-model="a.note" type="text" maxlength="100" :aria-label="`${a.filename} 的說明`" placeholder="說明" style="min-height: 36px; padding: 6px 10px; font-size: 14px" @change="saveNote(a)">
               <div class="small muted">{{ kind(a) }} · {{ fmtSize(a.size) }}</div>
             </div>
             <div class="col">

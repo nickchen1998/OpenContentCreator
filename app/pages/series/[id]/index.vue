@@ -267,7 +267,7 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
           <div class="comment-log fill scroll" tabindex="0" aria-label="拿到私訊的人">
             <div v-for="c in shownLeads" :key="c.id" class="comment-item">
               <div class="row between" style="gap: 6px 12px">
-                <span class="pf-row bold" style="gap: 6px; font-size: 14px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="14" />{{ c.author }}</span>
+                <span class="pf-row bold" style="gap: 6px; font-size: 15px"><PlatformIcon :platform="account(c.accountId)?.platform" :size="14" />{{ c.author }}</span>
                 <span class="small muted">{{ timeOf(c.createdAt).slice(5) }}</span>
               </div>
               <span class="small muted wrap-any">{{ c.text }}</span>
