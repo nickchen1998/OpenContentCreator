@@ -46,7 +46,7 @@ async function save() {
 
 <template>
   <AppDialog v-model="open" :title="post ? '修改規劃' : '新增規劃'" :error="error" :busy="busy" @submit="save">
-    <div v-if="!boot.groups.length" class="note">還沒有帳號群組，請先到「帳號群組」建立群組並加入帳號。</div>
+    <div v-if="!boot.groups.length" class="note">請先到「帳號群組」建立群組與帳號</div>
     <template v-else>
       <label class="field">標題
         <input v-model="form.title" type="text" maxlength="120" required>
@@ -59,7 +59,7 @@ async function save() {
         </label>
         <label class="field grow">專案
           <select v-model="form.projectId">
-            <option :value="null">自己排的（不屬於專案）</option>
+            <option :value="null">不屬於專案</option>
             <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
@@ -77,7 +77,7 @@ async function save() {
         <label v-for="a in group?.accounts" :key="a.id" class="check">
           <input v-model="form.accountIds" type="checkbox" :value="a.id">{{ PLATFORMS[a.platform].label }}・{{ a.name }}
         </label>
-        <div v-if="!group?.accounts.length" class="note">這個群組還沒有帳號。</div>
+        <div v-if="!group?.accounts.length" class="note">這個群組還沒有帳號</div>
       </fieldset>
       <label class="field">備註（選填）
         <textarea v-model="form.note" rows="2" maxlength="2000" />

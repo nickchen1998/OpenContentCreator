@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 const id = () => integer('id').primaryKey({ autoIncrement: true })
 
@@ -85,6 +85,8 @@ export const postTargets = sqliteTable('post_targets', {
   shares: integer('shares').notNull().default(0),
   saves: integer('saves').notNull().default(0),
   metricsUpdatedAt: text('metrics_updated_at'),
+  externalPostId: text('external_post_id').notNull().default(''), // 平台上的貼文 id（由發文連結對出來，同步成效用）
+  syncError: text('sync_error').notNull().default(''),
 }, t => [index('post_targets_post_idx').on(t.postId), index('post_targets_account_idx').on(t.accountId)])
 
 // 素材的 metadata，內容在 R2
@@ -119,6 +121,10 @@ export const replyRules = sqliteTable('reply_rules', {
   replies: text('replies', { mode: 'json' }).$type<string[]>().notNull(),
   dmText: text('dm_text').notNull().default(''),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  channel: text('channel').notNull().default('comment'), // comment 留言 | message 私訊
+  // 只對平台上的某一則貼文生效（從帳號最近的貼文挑的）；空字串是全部貼文。postLabel 是當時的貼文文字，顯示用
+  externalPostId: text('external_post_id').notNull().default(''),
+  postLabel: text('post_label').notNull().default(''),
   cursor: integer('cursor').notNull().default(0), // 輪替用：下一次要用第幾句
   createdAt: text('created_at').notNull(),
 })
@@ -137,4 +143,26 @@ export const comments = sqliteTable('comments', {
   dmText: text('dm_text').notNull().default(''),
   reason: text('reason').notNull().default(''),
   status: text('status').notNull(),
-}, t => [index('comments_account_idx').on(t.accountId, t.createdAt)])
+  kind: text('kind').notNull().default('comment'), // comment 留言 | message 私訊
+  externalId: text('external_id'), // 平台上的留言／訊息 id，webhook 重送時用來去重；手動貼入的是 null
+  externalPostId: text('external_post_id').notNull().default(''), // 平台上的貼文 id
+  senderId: text('sender_id').notNull().default(''), // 平台上的留言者／傳訊者 id（回私訊要用）
+  error: text('error').notNull().default(''), // 送出失敗時平台回的錯誤
+}, t => [index('comments_account_idx').on(t.accountId, t.createdAt), uniqueIndex('comments_external_idx').on(t.accountId, t.externalId)])
+
+// 帳號與平台 API 的連結。Meta 的部分由會員用自己的 Meta App 產生 token 貼進來（只服務自己的帳號，不用 App Review）。
+// token 與 app secret 用 NUXT_TOKEN_KEY 加密後才存。
+export const connections = sqliteTable('connections', {
+  id: id(),
+  accountId: integer('account_id').notNull().unique().references(() => accounts.id, { onDelete: 'cascade' }),
+  externalId: text('external_id').notNull(), // Instagram 帳號 id／Facebook 粉專 id（webhook 的 entry.id）／Threads 使用者 id
+  externalName: text('external_name').notNull().default(''),
+  tokenEnc: text('token_enc').notNull(),
+  appSecretEnc: text('app_secret_enc').notNull(), // 驗 webhook 簽章用；Threads 不走 webhook，存空字串
+  tokenExpiresAt: text('token_expires_at'),
+  autoSend: integer('auto_send', { mode: 'boolean' }).notNull().default(true),
+  lastEventAt: text('last_event_at'),
+  lastPolledAt: text('last_polled_at'), // Threads 沒有 webhook 可用，靠排程輪詢
+  lastError: text('last_error').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+}, t => [index('connections_external_idx').on(t.externalId)])

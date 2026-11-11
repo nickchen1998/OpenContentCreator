@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { accounts } from '../../database/schema'
+import { accounts } from '../../../database/schema'
 
 export default defineEventHandler(async (event) => {
   const body = await bodyOf(event)

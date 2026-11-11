@@ -19,18 +19,11 @@ const GROUP_COLORS = ['#1F4FA3', '#0F5C55', '#7A4300', '#4B2FA3', '#8A1F52']
 </script>
 
 <template>
-  <div class="row between gap-lg">
-    <div class="col">
-      <p class="en-label">Insights · 成效總覽</p>
-      <h1>成效總覽</h1>
-      <div class="muted">近 {{ days }} 天，{{ boot.groups.length }} 個群組、{{ summary.rows.length }} 個帳號合併。只計入已貼上連結的貼文，數字來自你在貼文頁登錄的成效。</div>
-    </div>
-    <div class="row" role="group" aria-label="期間">
+  <div class="row" role="group" aria-label="期間">
       <button type="button" class="chip" :aria-pressed="days === 7" @click="days = 7">近 7 天</button>
       <button type="button" class="chip" :aria-pressed="days === 28" @click="days = 28">近 28 天</button>
       <button type="button" class="chip" :aria-pressed="days === 90" @click="days = 90">近 90 天</button>
     </div>
-  </div>
 
   <div class="stats">
     <div class="stat"><span class="small muted">總觀看</span><b>{{ fmtNum(summary.totals.views) }}</b></div>
@@ -59,7 +52,7 @@ const GROUP_COLORS = ['#1F4FA3', '#0F5C55', '#7A4300', '#4B2FA3', '#8A1F52']
         </tbody>
       </table>
     </div>
-    <div v-if="!summary.rows.length" class="empty">還沒有帳號。</div>
+    <div v-if="!summary.rows.length" class="empty">還沒有帳號</div>
   </section>
 
   <div class="grid-2">
@@ -77,7 +70,7 @@ const GROUP_COLORS = ['#1F4FA3', '#0F5C55', '#7A4300', '#4B2FA3', '#8A1F52']
           </div>
         </div>
       </div>
-      <div v-if="!summary.top.length" class="empty">這段期間還沒有已發出的貼文。到貼文頁貼上連結並登錄成效後，這裡就會有數字。</div>
+      <div v-if="!summary.top.length" class="empty">這段期間沒有已發出的貼文</div>
     </section>
     <section class="card">
       <h2>各群組的觀看</h2>
@@ -85,8 +78,6 @@ const GROUP_COLORS = ['#1F4FA3', '#0F5C55', '#7A4300', '#4B2FA3', '#8A1F52']
         <div class="row between"><span class="bold">{{ group(g.groupId)?.name }}</span><span>{{ fmtNum(g.views) }}（{{ share(g.views) }}）</span></div>
         <div class="bar-track" aria-hidden="true"><div class="bar" :style="{ width: `${Math.round(g.views / maxGroupViews * 100)}%`, background: GROUP_COLORS[i % GROUP_COLORS.length] }" /></div>
       </div>
-      <h2 style="margin-top: 8px">指標怎麼合併</h2>
-      <div class="note">觀看：各平台都以「觀看數」為準。<br>互動：按讚、留言、分享相加。<br>互動率：互動除以觀看。<br>期間以貼文的預計發文時間計算。</div>
     </section>
   </div>
 </template>

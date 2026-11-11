@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { comments } from '../../database/schema'
+import { comments } from '../../../database/schema'
 
 // ready → sent（你已把固定回覆貼出去）；unmatched / skipped → handled（你自己處理了）
 export default defineEventHandler(async (event) => {

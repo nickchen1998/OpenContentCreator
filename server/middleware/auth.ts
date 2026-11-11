@@ -1,11 +1,11 @@
 import { eq } from 'drizzle-orm'
 import { users } from '../database/schema'
 
-// /api 底下除了登入與 session 以外都要先登入，並把會員 id 放進 event.context.userId。/mcp 自己驗專案 token。
+// /api 底下除了登入、session 與平台的 webhook（/api/hooks，自己驗簽章）以外都要先登入，並把會員 id 放進 event.context.userId。/mcp 自己驗專案 token。
 // 每個請求都依 id 重新查一次會員：帳號被刪掉，手上的 session 就立刻失效。
 export default defineEventHandler(async (event) => {
   const path = event.path.split('?')[0]!
-  if (!path.startsWith('/api/') || path.startsWith('/api/auth/login') || path.startsWith('/api/_auth/')) return
+  if (!path.startsWith('/api/') || path.startsWith('/api/auth/login') || path.startsWith('/api/_auth/') || path.startsWith('/api/hooks/')) return
   const session = await requireUserSession(event)
   const id = (session.user as { id?: unknown }).id
   // 多會員制之前發的 session 沒有 id，一律當成沒登入

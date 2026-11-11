@@ -25,12 +25,25 @@
 - 設計語言比照 TuSoul（`../TuSoul/web/app/assets/css/`）：米白底淡格線、白卡片大圓角、深綠漸層側欄、
   膠囊按鈕、英文小標（`.en-label`）。token 與共用 class 都在 `app/assets/css/main.css`，不用 UI 框架。
 - 字級：內文 15、頁標題 24/800、區塊標題 17/700、輔助文字 13、英文小標 11、按鈕 14／13、表格 13.5。
-- 每頁開頭是 `<p class="en-label">English · 中文</p>` 加 `<h1>`。不要用藍色當主色或 logo 底色。
+- **畫面上不放說明文字，也不放頁面標題與副標**（側欄已經標出所在位置）：使用者看到就該知道怎麼用。
+  需要解釋的東西放 `/guide`。不要用藍色當主色或 logo 底色。
+
+## 平台串接
+
+- **Meta 由會員自備 App 與 token**（使用者的決定）：不要做「我們自己的 Meta App + OAuth」。YouTube 之後由站方在 GCP 申請。
+- 進來：Instagram／Facebook 走 webhook（`server/api/hooks/meta/[key].ts`，網址裡的 key 對到會員，再用該帳號的 app secret
+  驗簽章）；Threads 的 webhook 要過 App Review，改用排程輪詢（`pollThreads`）。都匯到 `server/utils/inbound.ts` 的 `receive`。
+- 出去：`deliver`（留言回覆、private reply、回私訊）。Graph API 都在 `server/utils/meta.ts`。
+- **還沒有用真的 Meta App 驗證過**：目前的測試是對著本機的假 Graph API（設 `NUXT_META_API_BASE`）。端點、欄位、權限名稱
+  是照 2026-11 查到的官方文件寫的，第一次接真的帳號時要逐項核對，尤其是 Facebook 的觀看數指標與各平台 webhook 的 payload。
+- 規則的「指定貼文」存的是平台上的貼文 id（`reply_rules.external_post_id`），不是我們自己的 posts.id。
+- 排程每次只處理少量再輪替（Free 方案每次 50 個對外請求、50 個 D1 查詢）；不要在迴圈裡每筆查一次 D1。
+- 本機觸發排程：`wrangler dev --test-scheduled` 後打 `/cdn-cgi/handler/scheduled?cron=*/5+*+*+*+*`。
 
 ## 寫程式時要知道的
 
 - 新的 server route 要放在 `/api/*` 或 `/mcp` 底下，否則會被靜態資產接走。頁面路徑不能叫 `/mcp`。
-- `/api/*` 由 `server/middleware/auth.ts` 統一要求登入（`/api/auth/login` 除外），每個請求重新查一次會員；`/mcp` 自己驗專案 token。
+- `/api/*` 由 `server/middleware/auth.ts` 統一要求登入（`/api/auth/login` 與 `/api/hooks/*` 除外），每個請求重新查一次會員；`/mcp` 自己驗專案 token。
 - 密碼雜湊是 PBKDF2 20,000 次（Free 方案的 CPU 上限），`server/utils/passwords.ts` 與 `scripts/set-user.mjs` 要用同一種格式。
 - drizzle-kit 在非互動環境遇到「是改名還是新增」會直接失敗：一次 migration 不要同時刪表又加表。
 - Workers Free 方案每個請求 10ms CPU、50 次 D1 查詢：多筆寫入用 `db.batch()`（`batchWrites`），

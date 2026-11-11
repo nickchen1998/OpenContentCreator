@@ -20,6 +20,7 @@ export interface Target {
   shares: number
   saves: number
   metricsUpdatedAt: string | null
+  syncError: string
 }
 export interface Post {
   id: number
@@ -43,6 +44,9 @@ export interface ReplyRule {
   groupId: number
   accountId: number | null
   postId: number | null
+  channel: 'comment' | 'message'
+  externalPostId: string
+  postLabel: string
   matchType: 'keyword' | 'any'
   keywords: string
   action: 'reply' | 'reply_dm'
@@ -64,4 +68,16 @@ export interface CommentRow {
   dmText: string
   reason: string
   status: CommentStatus
+  kind: 'comment' | 'message'
+  externalId: string | null
+  error: string
+}
+export interface ConnectionInfo {
+  accountId: number
+  externalId: string
+  externalName: string
+  autoSend: boolean
+  tokenExpiresAt: string | null
+  lastEventAt: string | null
+  lastError: string
 }

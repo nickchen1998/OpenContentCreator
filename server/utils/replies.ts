@@ -1,61 +1,85 @@
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { accounts, comments, groups, replyRules } from '../database/schema'
 
-export interface IncomingComment { accountId: number, postId?: number | null, postTitle: string, author: string, text: string }
+export interface Incoming {
+  accountId: number
+  kind: 'comment' | 'message'
+  author: string
+  text: string
+  postId?: number | null
+  postTitle?: string
+  /** 以下三個只有從平台 webhook 進來的才有 */
+  externalId?: string
+  externalPostId?: string
+  senderId?: string
+}
 
 /**
- * 固定回覆的規則引擎。只有命中規則的留言會得到一句事先寫好的回覆，沒命中的不處理。
- * 防洗版：同一位留言者在同一則貼文只回一次；每個帳號每小時回覆有上限；多句輪替。
- * 平台 API 尚未接上，所以這裡只「選好回覆」（status ready），由人貼上後標示為已回覆。
- * 之後接上各平台的 webhook／輪詢時，呼叫同一個函式，再把 ready 的回覆送出去即可。
+ * 固定回覆的規則引擎：留言與私訊共用。只有命中規則的才會得到一句事先寫好的回覆，沒命中的不處理。
+ * 防洗版：留言是同一個人在同一則貼文只回一次；私訊是同一個人同一條規則 24 小時內只回一次；
+ * 每個帳號每小時回覆有上限；多句輪替。
+ * 這裡只負責「選好回覆」（status ready）並記錄下來，實際送出在 server/utils/inbound.ts 的 deliver。
  */
-export async function processComment(boot: Boot, input: IncomingComment) {
+export async function processComment(boot: Boot, input: Incoming) {
   const db = useDb()
   const account = allAccounts(boot).find(a => a.id === input.accountId)
   if (!account) throw bad('找不到這個帳號')
+  const isMessage = input.kind === 'message'
+  const who = input.senderId ? eq(comments.senderId, input.senderId) : eq(comments.author, input.author)
+  const answered = inArray(comments.status, ['ready', 'sent'])
   const hourAgo = new Date(Date.now() - 3600_000).toISOString()
+  const dayAgo = new Date(Date.now() - 86400_000).toISOString()
   const [rules, earlier, recent] = await db.batch([
-    db.select().from(replyRules).where(and(eq(replyRules.groupId, account.groupId), eq(replyRules.enabled, true))),
-    db.select({ id: comments.id }).from(comments).where(and(
-      eq(comments.accountId, input.accountId), eq(comments.postTitle, input.postTitle), eq(comments.author, input.author),
-      inArray(comments.status, ['ready', 'sent']),
-    )).limit(1),
-    db.select({ n: sql<number>`count(*)` }).from(comments).where(and(
-      eq(comments.accountId, input.accountId), inArray(comments.status, ['ready', 'sent']), gte(comments.createdAt, hourAgo),
+    db.select().from(replyRules).where(and(eq(replyRules.groupId, account.groupId), eq(replyRules.enabled, true), eq(replyRules.channel, input.kind))),
+    // 這個人之前已經被回過的紀錄
+    db.select({ ruleId: comments.ruleId }).from(comments).where(and(
+      eq(comments.accountId, input.accountId), eq(comments.kind, input.kind), who, answered,
+      isMessage
+        ? gte(comments.createdAt, dayAgo)
+        : input.externalPostId ? eq(comments.externalPostId, input.externalPostId) : eq(comments.postTitle, input.postTitle ?? ''),
     )),
+    db.select({ n: sql<number>`count(*)` }).from(comments).where(and(eq(comments.accountId, input.accountId), answered, gte(comments.createdAt, hourAgo))),
   ])
 
   const text = input.text.toLowerCase()
-  const specificity = (r: typeof rules[number]) => (r.postId != null ? 2 : r.accountId != null ? 1 : 0)
+  const specificity = (r: typeof rules[number]) => (r.externalPostId || r.postId != null ? 2 : r.accountId != null ? 1 : 0)
   const rule = rules
     .filter(r => (r.accountId == null || r.accountId === input.accountId) && (r.postId == null || r.postId === input.postId))
+    // 指定貼文的規則只對那一則貼文底下的留言生效
+    .filter(r => !r.externalPostId || r.externalPostId === input.externalPostId)
     .filter(r => r.matchType === 'any' || keywordsOf(r.keywords).some(k => text.includes(k.toLowerCase())))
     // 範圍越小的規則越優先；同範圍時關鍵字規則優先於「任何留言」
     .sort((a, b) => specificity(b) - specificity(a) || Number(a.matchType === 'any') - Number(b.matchType === 'any') || a.id - b.id)[0]
 
-  const base = { accountId: input.accountId, postTitle: input.postTitle, author: input.author, text: input.text, createdAt: nowIso() }
-  if (!rule) {
-    return insert({ ...base, status: 'unmatched', reason: '沒有命中任何規則，系統不會回覆，留給你親自處理。' })
+  const noun = isMessage ? '訊息' : '留言'
+  const base = {
+    accountId: input.accountId, kind: input.kind, postTitle: input.postTitle ?? '', author: input.author, text: input.text, createdAt: nowIso(),
+    externalId: input.externalId ?? null, externalPostId: input.externalPostId ?? '', senderId: input.senderId ?? '',
   }
+  if (!rule) return insert({ ...base, status: 'unmatched', reason: '沒有命中任何規則' })
+
   const hit = rule.matchType === 'any'
-    ? `命中「${rule.name}」：這個範圍的任何留言都會觸發。`
-    : `命中「${rule.name}」：留言含關鍵字「${keywordsOf(rule.keywords).find(k => text.includes(k.toLowerCase()))}」。`
+    ? `命中「${rule.name}」（任何${noun}）`
+    : `命中「${rule.name}」（關鍵字「${keywordsOf(rule.keywords).find(k => text.includes(k.toLowerCase()))}」）`
   const matched = { ...base, ruleId: rule.id, ruleName: rule.name }
-  if (earlier.length) {
-    return insert({ ...matched, status: 'skipped', reason: `${hit}但同一位留言者在這則貼文已經回覆過，不再重複回。` })
+  const repeated = isMessage ? earlier.some(e => e.ruleId === rule.id) : earlier.length > 0
+  if (repeated) {
+    return insert({ ...matched, status: 'skipped', reason: `${hit}，但${isMessage ? '24 小時內已經回過這個人' : '這個人在這則貼文已經回過'}` })
   }
   if (boot.rules.replyPerHour > 0 && (recent[0]?.n ?? 0) >= boot.rules.replyPerHour) {
-    return insert({ ...matched, status: 'skipped', reason: `${hit}但這個帳號這一小時的回覆已達上限（${boot.rules.replyPerHour} 則），暫停到下個小時。` })
+    return insert({ ...matched, status: 'skipped', reason: `${hit}，但這個帳號這一小時已達上限 ${boot.rules.replyPerHour} 則` })
   }
   const index = rule.cursor % rule.replies.length
+  // 留言後私訊只有 Instagram 與 Facebook 做得到；規則掛在整個群組時，其他平台的帳號只回留言
+  const withDm = !isMessage && rule.action === 'reply_dm' && (account.platform === 'instagram' || account.platform === 'facebook')
   const [, created] = await db.batch([
     db.update(replyRules).set({ cursor: rule.cursor + 1 }).where(eq(replyRules.id, rule.id)),
     db.insert(comments).values({
       ...matched,
       status: 'ready',
       replyText: rule.replies[index]!,
-      dmText: rule.action === 'reply_dm' ? rule.dmText : '',
-      reason: `${hit}使用第 ${index + 1} 句輪替內容${rule.action === 'reply_dm' ? '，並附上私訊內容' : ''}。`,
+      dmText: withDm ? rule.dmText : '',
+      reason: `${hit}，第 ${index + 1} 句${withDm ? '＋私訊' : ''}`,
     }).returning(),
   ])
   return created[0]!

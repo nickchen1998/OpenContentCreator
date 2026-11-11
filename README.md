@@ -10,11 +10,12 @@
 | 頁面 | 內容 |
 |---|---|
 | 排程 `/` | 週曆。自己新增規劃，或確認各專案透過 MCP 送來的提案；撞期會標紅 |
-| 貼文 `/posts/:id` | 素材上傳與下載（R2）、各平台文案、發文連結與成效登錄 |
+| 貼文 `/posts/:id` | 素材上傳與下載（R2）、各平台文案、發文連結、成效同步 |
 | 成效 `/insights` | 依帳號、群組彙整已發出貼文的觀看與互動 |
-| 留言回覆 `/replies` | 固定回覆規則（關鍵字／任何留言、多句輪替、防洗版）與留言紀錄 |
+| 設定教學 `/guide` | 各平台怎麼建立 Meta App、產生 token、設定 Webhook |
+| 自動回覆 `/replies` | 留言與私訊的固定回覆規則（關鍵字／任何、指定貼文、多句輪替、防洗版）與紀錄 |
 | MCP 連線 `/connections` | 提案佇列、專案與 token、協調規則 |
-| 帳號群組 `/groups` | 群組與底下各平台的帳號 |
+| 帳號群組 `/groups` | 群組與底下各平台的帳號、連結平台 API |
 | 會員管理 `/members` | 管理員建立會員、重設密碼、刪除會員 |
 
 ### MCP
@@ -39,11 +40,25 @@ claude mcp add --transport http opencontentcreator https://opencontentcreator.co
   OCC_USER_PASSWORD='<密碼>' node scripts/set-user.mjs <帳號> --admin --remote
   ```
 
+### 平台串接
+
+會員用**自己的 Meta App** 產生 token 貼進來（只服務自己的帳號，不需要 Meta 的 App Review）。設定步驟在站內的 `/guide`。
+
+| 平台 | 留言回覆 | 留言後私訊 | 私訊自動回覆 | 成效同步 | 怎麼收到留言 |
+|---|---|---|---|---|---|
+| Instagram | ✓ | ✓ | ✓ | ✓ | Webhook（即時） |
+| Facebook 粉專 | ✓ | ✓ | ✓ | ✓ | Webhook（即時） |
+| Threads | ✓ | 平台不支援 | 平台不支援 | ✓ | 每 5 分鐘輪詢（Webhook 要過 App Review） |
+| YouTube | 還沒做 | 平台不支援 | 平台不支援 | 還沒做 | — |
+
+- 規則可以掛在群組、單一帳號，或**單一貼文**（從帳號最近的貼文挑）：不同貼文的留言可以私訊不同內容。
+- token 與 app secret 用 `NUXT_TOKEN_KEY` 加密後才存進 D1。
+- 成效每 30 分鐘輪流同步，貼文頁也可以按「同步成效」。Instagram 與 Threads 的 token 60 天到期，排程會自動換新。
+- **這一段是對著假的 Graph API 測過的，還沒有用真的 Meta App 跑過**（見 CLAUDE.md）。
+
 ### 還沒做的
 
-- **各平台 API 尚未串接**（Meta / YouTube 需要各自的開發者應用程式與審核）。所以：
-  成效數字是手動登錄；留言是手動貼入，系統依規則挑好固定回覆，由你貼出去再標示已回覆。
-  規則引擎在 `server/utils/replies.ts`，接上平台後直接呼叫 `processComment`。
+- YouTube（等 GCP 的 OAuth client）。
 - 素材單檔上限 60MB。
 
 ## 架構
@@ -55,7 +70,7 @@ claude mcp add --transport http opencontentcreator https://opencontentcreator.co
 | `DB`（D1） | 所有資料，schema 在 `server/database/schema.ts`（drizzle） |
 | `MEDIA`（R2） | 素材內容，key 是 `assets/<postId>/<uuid>` |
 
-頁面由靜態資產直接回應，只有 `/api/*` 與 `/mcp` 會進 Worker（`nuxt.config.ts` 的 `run_worker_first`）。
+頁面由靜態資產直接回應，只有 `/api/*` 與 `/mcp` 會進 Worker；另有兩個排程（每 5 分鐘、每 30 分鐘，`server/plugins/scheduled.ts`）（`nuxt.config.ts` 的 `run_worker_first`）。
 時間一律是台北時間，存成 `YYYY-MM-DDTHH:MM`。
 
 ## 開發
@@ -82,3 +97,4 @@ pnpm build && pnpm exec wrangler deploy
 Secret 用 `wrangler secret put` 設定，不放進任何會 commit 的檔案：
 
 - `NUXT_SESSION_PASSWORD`：session cookie 的加密密鑰
+- `NUXT_TOKEN_KEY`：加密平台 token 的金鑰（換掉的話已連結的帳號都要重新連結）

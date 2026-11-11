@@ -129,6 +129,15 @@ async function remove() {
     await navigateTo({ path: '/', query: { w: mondayOf(post.value!.scheduledAt.slice(0, 10)) } })
   }
 }
+const syncing = ref(false)
+async function sync() {
+  syncing.value = true
+  const result = await attempt(() => api<{ post: Post, errors: string[] }>(`/api/posts/${id}/sync`, { method: 'POST' }))
+  syncing.value = false
+  if (!result) return
+  apply(result.post)
+  notify(result.errors[0] ?? '成效已更新')
+}
 const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected: '已退回', withdrawn: '專案已撤回' }
 </script>
 
@@ -138,7 +147,6 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
     <NuxtLink :to="{ path: '/', query: { w: mondayOf(post.scheduledAt.slice(0, 10)) } }" class="btn-text" style="align-self: flex-start; padding-left: 0">← 返回排程</NuxtLink>
     <div class="row between gap-lg">
       <div class="col" style="gap: 8px">
-        <p class="en-label">Post · 貼文素材與文案</p>
         <h1 class="wrap-any">{{ post.title }}</h1>
         <div class="row" style="font-size: 14px; color: var(--text-2)">
           <span class="tag lg" :style="projectStyle(post.projectId)">{{ projectLabel(post) }}</span>
@@ -183,7 +191,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
             <div v-else class="thumb" aria-hidden="true">{{ kind(a) }}</div>
             <div class="col grow">
               <div class="wrap-any" style="font-weight: 500">{{ a.filename }}</div>
-              <input v-model="a.note" type="text" maxlength="100" :aria-label="`${a.filename} 的說明`" placeholder="說明，例如：輪播第 1 張・封面" style="min-height: 36px; padding: 6px 10px; font-size: 13px" @change="saveNote(a)">
+              <input v-model="a.note" type="text" maxlength="100" :aria-label="`${a.filename} 的說明`" placeholder="說明" style="min-height: 36px; padding: 6px 10px; font-size: 13px" @change="saveNote(a)">
               <div class="small muted">{{ kind(a) }} · {{ fmtSize(a.size) }}</div>
             </div>
             <div class="col">
@@ -192,7 +200,7 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
             </div>
           </div>
         </div>
-        <div v-if="!assets.length" class="empty">還沒有素材。上傳圖片或影片，發文時從這裡下載（單檔上限 60MB）。</div>
+        <div v-if="!assets.length" class="empty">還沒有素材（單檔上限 60MB）</div>
       </section>
 
       <section class="card">
@@ -213,9 +221,9 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
     </div>
 
     <section class="card" style="gap: 16px">
-      <div class="col">
-        <h2>發文狀態與成效</h2>
-        <div class="small muted" style="font-size: 14px">系統不會代發，也還沒有接上各平台的 API：手動發文後把貼文連結貼回來，成效數字也由你登錄。</div>
+      <div class="row between">
+        <h2>發文與成效</h2>
+        <button v-if="post.targets.some(t => t.publishedUrl)" type="button" class="btn" :disabled="syncing" @click="sync">{{ syncing ? '同步中…' : '同步成效' }}</button>
       </div>
       <div class="col divided" style="gap: 16px">
         <div v-for="t in post.targets" :key="t.id" class="row between gap-lg">
@@ -223,12 +231,13 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
             <div class="bold">{{ platformLabel(t.accountId) }}</div>
             <div v-if="t.publishedUrl" class="small bold" style="color: var(--ok)">已發文　<a :href="t.publishedUrl" target="_blank" rel="noopener noreferrer">開啟貼文</a></div>
             <div v-else class="small" style="color: var(--text-2)">尚未發文</div>
+            <div v-if="t.syncError" class="error">{{ t.syncError }}</div>
           </div>
           <div v-if="t.publishedUrl" class="metrics" style="flex: 3 1 420px">
             <div v-for="(label, key) in METRIC_LABELS" :key="key" class="col" style="gap: 2px"><span class="small muted">{{ label }}</span><b>{{ fmtNum(t[key]) }}</b></div>
           </div>
           <div class="row">
-            <button type="button" class="btn" @click="openLink(t)">{{ t.publishedUrl ? '改連結' : '我已發文，貼上連結' }}</button>
+            <button type="button" class="btn" @click="openLink(t)">{{ t.publishedUrl ? '改連結' : '貼上貼文連結' }}</button>
             <button v-if="t.publishedUrl" type="button" class="btn" @click="openMetrics(t)">登錄成效</button>
             <button v-else type="button" class="btn" @click="editOpen = true">改時間</button>
           </div>
@@ -238,12 +247,11 @@ const STATUS = { scheduled: '已規劃', pending: '待確認的提案', rejected
 
     <PostForm v-model="editOpen" :post="post" @saved="p => { apply(p); refreshBoot() }" />
     <AppDialog v-model="linkOpen" title="貼上貼文連結" :error="dialogError" @submit="saveLink">
-      <label class="field">{{ linkFor && platformLabel(linkFor.accountId) }} 的貼文連結（清空表示還沒發）
+      <label class="field">{{ linkFor && platformLabel(linkFor.accountId) }} 的貼文連結
         <input v-model="linkUrl" type="url" placeholder="https://">
       </label>
     </AppDialog>
     <AppDialog v-model="metricsOpen" title="登錄成效" :error="dialogError" @submit="saveMetrics">
-      <div class="note">{{ metricsFor && platformLabel(metricsFor.accountId) }}：填入平台後台目前看到的累計數字。</div>
       <div class="metrics">
         <label v-for="(label, key) in METRIC_LABELS" :key="key" class="field">{{ label }}
           <input v-model.number="metrics[key]" type="number" min="0" step="1" required>

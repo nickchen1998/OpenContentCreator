@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { accounts } from '../../database/schema'
+import { accounts } from '../../../database/schema'
 
 export default defineEventHandler(async (event) => {
   await ownedAccount(uidOf(event), idParam(event))

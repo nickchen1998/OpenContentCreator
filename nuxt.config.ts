@@ -60,5 +60,9 @@ export default defineNuxtConfig({
   // 執行時由同名的 NUXT_* 環境變數覆蓋（Workers 上用 wrangler secret），不要寫 process.env
   runtimeConfig: {
     session: { maxAge: 60 * 60 * 24 * 30 },
+    // 加密平台 token 的金鑰（32 字元以上），由 NUXT_TOKEN_KEY 提供
+    tokenKey: '',
+    // 只給本機測試用：把 Meta 的 API 指到假的伺服器，由 NUXT_META_API_BASE 提供。正式環境不要設
+    metaApiBase: '',
   },
 })
