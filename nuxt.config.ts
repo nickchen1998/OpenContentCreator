@@ -1,4 +1,4 @@
-// 架構同 TravelDiary：Nuxt 全端跑在 Cloudflare Workers，頁面是純前端渲染的 SPA，
+// 架構：Nuxt 全端跑在 Cloudflare Workers，頁面是純前端渲染的 SPA，
 // 只有 /api/* 與 /mcp 會進 Worker。
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
