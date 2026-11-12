@@ -11,6 +11,6 @@ export default defineEventHandler(async (event) => {
     published: true, live: row.draft, liveAvatarKey: row.draftAvatarKey, liveCoverKey: row.draftCoverKey, publishedAt: now, updatedAt: now,
   }).where(eq(publicPages.ownerId, uid))
   // 被換掉、兩邊都不再用的舊圖片清掉
-  await dropUnusedPageImages([row.liveAvatarKey, row.liveCoverKey], await loadPageRow(uid))
+  await dropUnusedPageImages([row.liveAvatarKey, row.liveCoverKey, ...seriesCoverKeys(row.live)], await loadPageRow(uid))
   return pageState(uid)
 })

@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   let html = await shell.text()
   const found = await loadPublishedPage(slug)
   if (found) {
-    const view = await buildPageView(found.row.ownerId, found.config, livePageImages(found.row))
+    const view = await buildPageView(found.row.ownerId, found.config, livePageImages(found.row, found.config))
     const title = view.share.title
     const image = view.share.image ? `${origin}${view.share.image}` : `${origin}/icon-192.png`
     const tags = [

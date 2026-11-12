@@ -48,6 +48,11 @@ function stateOf(c: { waiting: boolean, last: CommentRow }) {
   return { label: '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
 }
 
+// 畫面上的標籤。資料庫裡的 reason 仍然是「自動回覆／手動回覆」（查詢會用到），只在顯示時換成講清楚的說法；
+// 在平台上自己回的（reason 是空的）不標
+const TAGS: Record<string, string> = { 自動回覆: '自動留言回覆', 手動回覆: '本站手動回覆' }
+const DM_TAG = '自動私訊寄送'
+const tagOf = (reason: string) => TAGS[reason] ?? reason
 interface Message { key: string, who: string, at: string, text: string, mine: boolean, tag: string, row?: CommentRow }
 const current = computed(() => grouped.value.conversations.find(c => c.key === openKey.value))
 const messages = computed<Message[]>(() => {
@@ -55,12 +60,12 @@ const messages = computed<Message[]>(() => {
   if (!conv) return []
   const out: Message[] = []
   for (const row of conv.rows) {
-    out.push({ key: `r${row.id}`, who: row.mine ? '我' : row.author, at: row.createdAt, text: row.text, mine: row.mine, tag: row.mine ? row.reason : '', row })
+    out.push({ key: `r${row.id}`, who: row.mine ? '我' : row.author, at: row.createdAt, text: row.text, mine: row.mine, tag: row.mine ? tagOf(row.reason) : '', row })
     if (row.mine || row.status !== 'sent') continue
     // 舊紀錄的回覆記在同一筆上，沒有另外一筆「我的回覆」：補一句進來
     const answered = conv.rows.some(r => r.mine && r.parentExternalId === row.externalId)
-    if (row.replyText && !answered) out.push({ key: `a${row.id}`, who: '我', at: row.createdAt, text: row.replyText, mine: true, tag: row.reason === '手動回覆' ? '手動回覆' : '自動回覆' })
-    if (row.dmText && !row.error) out.push({ key: `d${row.id}`, who: '我', at: row.createdAt, text: row.dmText, mine: true, tag: '私訊' })
+    if (row.replyText && !answered) out.push({ key: `a${row.id}`, who: '我', at: row.createdAt, text: row.replyText, mine: true, tag: tagOf(row.reason === '手動回覆' ? '手動回覆' : '自動回覆') })
+    if (row.dmText && !row.error) out.push({ key: `d${row.id}`, who: '我', at: row.createdAt, text: row.dmText, mine: true, tag: DM_TAG })
   }
   return out
 })
