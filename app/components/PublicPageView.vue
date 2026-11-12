@@ -41,7 +41,10 @@ onMounted(() => window.addEventListener('message', onMessage))
 onBeforeUnmount(() => window.removeEventListener('message', onMessage))
 const frameStyle = (embed: PageEmbed) => (embed.platform === 'youtube' ? { aspectRatio: '16 / 9' } : { height: `${heights[embed.src] ?? embed.height}px` })
 // 窄螢幕上精選貼文的「左右滑動」提示：滑過就收起來
+const year = new Date().getFullYear()
 const swiped = ref(false)
+// 窄螢幕上哪幾則嵌入已經點過（拿掉蓋在上面的那一層，可以直接操作平台的框）
+const touched = reactive<Record<number, boolean>>({})
 const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
 </script>
 
@@ -110,11 +113,15 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
             <template v-for="(p, pi) in view.posts" :key="pi">
               <!-- 嵌入：平台自己的框（圖片、影片都在裡面），下面補上平台不會顯示的觀看與互動率 -->
               <div v-if="p.embed" class="pg-card pg-post pg-embed">
-                <iframe
-                  :src="p.embed.src" :data-embed="p.embed.src" :style="frameStyle(p.embed)" :title="`${PLATFORMS[p.platform].label} 貼文`"
-                  loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"
-                  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
-                />
+                <div class="pg-frame">
+                  <iframe
+                    :src="p.embed.src" :data-embed="p.embed.src" :style="frameStyle(p.embed)" :title="`${PLATFORMS[p.platform].label} 貼文`"
+                    loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
+                  />
+                  <!-- 手指落在 iframe 上時，滑動會被裡面的頁面吃掉、整排滑不動：窄螢幕上先蓋一層透明的，滑動照常；點一下才把這則交給平台的框操作 -->
+                  <button v-if="!touched[pi]" type="button" class="pg-frame-cover" :aria-label="`操作這則 ${PLATFORMS[p.platform].label} 貼文`" @click="touched[pi] = true" />
+                </div>
                 <span class="pg-post-foot"><span class="pg-post-num">{{ num(p.views) }}</span><span class="pg-small">觀看 · 互動率 {{ p.rate }}</span></span>
               </div>
               <component :is="p.url ? 'a' : 'div'" v-else class="pg-card pg-post" :href="p.url || undefined" target="_blank" rel="noopener noreferrer">
@@ -164,7 +171,7 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
           <a v-for="(l, li) in view.links" :key="l.url + l.label" class="pg-cta" :class="{ ghost: li > 0 }" :href="l.url" target="_blank" rel="noopener noreferrer"><span>{{ l.label }}</span><span aria-hidden="true">→</span></a>
         </section>
       </template>
-      <p class="pg-footer">數字直接來自各平台，每天更新 · 由 OpenContentCreator 製作</p>
+      <p class="pg-footer">Powered by OpenContentCreator · © {{ year }} CodeWorldBagel</p>
     </div>
   </div>
 </template>
@@ -212,6 +219,8 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
 @keyframes pg-nudge { 0%, 100% { transform: none; } 40% { transform: translateX(-36px); } }
 .pg-grid-posts { align-items: start; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
 .pg-post.pg-embed { padding: 0; gap: 0; min-height: 0; overflow: hidden; }
+.pg-frame { position: relative; }
+.pg-frame-cover { display: none; position: absolute; inset: 0; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .pg-embed iframe { display: block; width: 100%; border: 0; background: #ffffff; }
 .pg-embed .pg-post-foot { margin: 0; padding: 14px 20px; }
 .pg-series { overflow: hidden; display: flex; flex-direction: column; }
@@ -303,6 +312,7 @@ a.pg-acct:hover .pg-label, .pg-series.v a.pg-top:hover .pg-top-text { text-decor
   .pg-series.v .pg-series-top { border-left: 0; border-top: 1px solid var(--pg-line); }
   /* 精選貼文不往下排成很長一頁：改成左右滑的一排，下一張露出一點邊；進場時整排往左晃兩下提示可以滑 */
   .pg-swipe { display: inline-flex; }
+  .pg-frame-cover { display: block; }
   .pg-grid-posts { display: flex; gap: 12px; margin: 0 -16px; padding: 4px 16px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .pg-grid-posts::-webkit-scrollbar { display: none; }
   .pg-grid-posts > * { flex: 0 0 84%; scroll-snap-align: start; }
