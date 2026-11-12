@@ -3,7 +3,7 @@
 // 改動會自動存成草稿；按「發布」才會更新對外看到的版本。
 interface State { slug: string, published: boolean, dirty: boolean, draft: PageConfig, images: { avatar: string, cover: string, series: Record<string, string> }, view: PageView }
 type Candidate = InsightPost & { seriesId: number | null }
-const { account } = useLookup()
+const { account, accounts } = useLookup()
 const state = ref<State>()
 const draft = ref<PageConfig>(defaultPageConfig())
 const slug = ref('')
@@ -55,8 +55,12 @@ async function publish() {
   busy.value = true
   // 先把還沒送出的改動存好，發布的才會是畫面上看到的這一版
   if (await save()) {
-    const next = await attempt(() => api<State>('/api/page/publish', { method: 'POST' }), '已發布')
-    if (next) apply(next)
+    // 發布時伺服器會順便把精選貼文的成效重抓一次；有沒抓到的就講出來
+    const next = await attempt(() => api<State & { syncFailed: number }>('/api/page/publish', { method: 'POST' }))
+    if (next) {
+      apply(next)
+      notify(next.syncFailed ? '已發布，但有精選貼文的成效沒同步到' : '已發布')
+    }
   }
   busy.value = false
 }
@@ -114,7 +118,7 @@ function toggle(index: number) {
 const noteOf = (type: PageBlock) => {
   const d = draft.value
   if (type === 'profile') return d.name || '還沒填名稱'
-  if (type === 'accounts') return '粉絲、平均觀看、互動率、成長'
+  if (type === 'accounts') return [d.accountsShow.map(k => PAGE_ACCOUNT_STAT_LABELS[k]).join('、') || '只列帳號', d.accountsHidden.length ? `隱藏 ${d.accountsHidden.length} 個帳號` : ''].filter(Boolean).join('・')
   if (type === 'stats') return `近 ${d.statsDays} 天・${d.statsShow.map(k => PAGE_STAT_LABELS[k]).join('、') || '還沒選'}`
   if (type === 'collab') return [d.collabItems.length ? `${d.collabItems.length} 個項目` : '', d.collabBrands.length ? `${d.collabBrands.length} 個品牌` : '', d.contactEmail].filter(Boolean).join('・') || '還沒填'
   if (type === 'posts') return [d.postIds.length ? `已選 ${d.postIds.length} 則` : '還沒選', d.postsEmbed ? '嵌入' : ''].filter(Boolean).join('・')
@@ -122,14 +126,13 @@ const noteOf = (type: PageBlock) => {
   if (type === 'text') return d.textTitle || d.textBody.slice(0, 20) || '還沒填'
   return d.links.length ? `${d.links.length} 顆` : '還沒加'
 }
-const editable = (type: PageBlock) => type !== 'accounts'
 
 // 編輯某個區塊的內容：在視窗裡改一份副本，按儲存才套用
 const editing = ref<PageBlock>()
 const dialogOpen = ref(false)
 const form = reactive({
   name: '', tagline: '', bio: '', postIds: [] as number[], seriesIds: [] as number[], textTitle: '', textBody: '', links: [] as { label: string, url: string }[],
-  statsDays: 28, statsShow: [] as PageStat[], postsEmbed: false,
+  statsDays: 28, statsShow: [] as PageStat[], accountsShow: [] as PageAccountStat[], accountsShown: [] as number[], postsEmbed: false,
   collabItems: [] as string[], collabBrands: [] as string[], contactEmail: '', contactLabel: '',
   seriesLayout: 'h' as 'h' | 'v', seriesTop: false, seriesText: {} as Record<string, string>,
 })
@@ -150,6 +153,8 @@ function edit(type: PageBlock) {
   Object.assign(form, {
     name: d.name, tagline: d.tagline, bio: d.bio, postIds: [...d.postIds], seriesIds: [...d.seriesIds], textTitle: d.textTitle, textBody: d.textBody, links: d.links.map(l => ({ ...l })),
     statsDays: d.statsDays, statsShow: [...d.statsShow], postsEmbed: d.postsEmbed,
+    // 視窗裡勾的是「要列出來的帳號」，存的是「不要列的」：之後新連結的帳號預設會出現
+    accountsShow: [...d.accountsShow], accountsShown: accounts.value.map(a => a.id).filter(id => !d.accountsHidden.includes(id)),
     collabItems: [...d.collabItems], collabBrands: [...d.collabBrands], contactEmail: d.contactEmail, contactLabel: d.contactLabel,
     seriesLayout: d.seriesLayout, seriesTop: d.seriesTop, seriesText: { ...d.seriesText },
   })
@@ -189,6 +194,7 @@ function applyEdit() {
     Object.assign(d, { collabItems: [...form.collabItems], collabBrands: [...form.collabBrands], contactEmail: form.contactEmail.trim(), contactLabel: form.contactLabel.trim() })
   }
   if (type === 'profile') Object.assign(d, { name: form.name, tagline: form.tagline, bio: form.bio })
+  if (type === 'accounts') Object.assign(d, { accountsShow: PAGE_ACCOUNT_STATS.filter(k => form.accountsShow.includes(k)), accountsHidden: accounts.value.map(a => a.id).filter(id => !form.accountsShown.includes(id)) })
   if (type === 'stats') Object.assign(d, { statsDays: form.statsDays, statsShow: PAGE_STATS.filter(k => form.statsShow.includes(k)) })
   if (type === 'posts') Object.assign(d, { postIds: [...form.postIds], postsEmbed: form.postsEmbed })
   if (type === 'series') Object.assign(d, { seriesIds: [...form.seriesIds], seriesLayout: form.seriesLayout, seriesTop: form.seriesTop, seriesText: { ...form.seriesText } })
@@ -269,7 +275,7 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
                 <div class="row" style="gap: 6px">
                   <button type="button" class="btn sm" :disabled="i === 0" :aria-label="`${PAGE_BLOCK_LABELS[b.type]} 上移`" @click="move(i, -1)">上移</button>
                   <button type="button" class="btn sm" :disabled="i === draft.blocks.length - 1" :aria-label="`${PAGE_BLOCK_LABELS[b.type]} 下移`" @click="move(i, 1)">下移</button>
-                  <button v-if="editable(b.type)" type="button" class="btn sm" :aria-label="`編輯 ${PAGE_BLOCK_LABELS[b.type]}`" @click="edit(b.type)">編輯</button>
+                  <button type="button" class="btn sm" :aria-label="`編輯 ${PAGE_BLOCK_LABELS[b.type]}`" @click="edit(b.type)">編輯</button>
                   <button type="button" class="chip" :aria-pressed="b.on" :aria-label="`${PAGE_BLOCK_LABELS[b.type]} ${b.on ? '顯示中' : '已隱藏'}`" @click="toggle(i)">{{ b.on ? '顯示' : '隱藏' }}</button>
                 </div>
               </div>
@@ -319,6 +325,20 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
         </div>
         <div class="stat-options">
           <label v-for="k in PAGE_STATS" :key="k" class="check"><input v-model="form.statsShow" type="checkbox" :value="k">{{ PAGE_STAT_LABELS[k] }}</label>
+        </div>
+      </template>
+      <template v-else-if="editing === 'accounts'">
+        <div class="col" style="gap: 2px">
+          <span class="small muted">數字</span>
+          <div class="stat-options">
+            <label v-for="k in PAGE_ACCOUNT_STATS" :key="k" class="check"><input v-model="form.accountsShow" type="checkbox" :value="k">{{ PAGE_ACCOUNT_STAT_LABELS[k] }}</label>
+          </div>
+        </div>
+        <div class="col" style="gap: 2px">
+          <span class="small muted">帳號</span>
+          <div class="stat-options">
+            <label v-for="a in accounts" :key="a.id" class="check"><input v-model="form.accountsShown" type="checkbox" :value="a.id"><PlatformIcon :platform="a.platform" :size="16" /><span class="ellipsis">{{ a.name }}</span></label>
+          </div>
         </div>
       </template>
       <template v-else-if="editing === 'collab'">

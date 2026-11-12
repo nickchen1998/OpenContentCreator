@@ -26,6 +26,7 @@ const iconColor = (platform: Platform) => (platform === 'threads' ? 'var(--pg-in
 // 帶正負號的數字（粉絲成長）；沒有資料時顯示 text
 const statText = (item: { n: number | null, text: string, signed: boolean }) => (item.n == null ? item.text : `${item.signed && item.n > 0 ? '+' : ''}${num(item.n)}`)
 const signed = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${num(n)}`)
+const shows = (key: PageAccountStat) => props.view.accountsShow.includes(key)
 const growthLabel = (platform: Platform) => (platform === 'youtube' ? '訂閱成長' : '粉絲成長')
 
 // 窄螢幕上精選貼文的「左右滑動」提示：滑過就收起來
@@ -55,15 +56,18 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
         </header>
 
         <section v-else-if="block === 'accounts' && view.accounts.length" class="pg-card pg-rows pg-in" :style="{ '--i': i }" aria-label="各平台數字">
-          <a v-for="(a, ai) in view.accounts" :key="ai" class="pg-acct" :href="a.url" target="_blank" rel="noopener noreferrer">
+          <a
+            v-for="(a, ai) in view.accounts" :key="ai" class="pg-acct" :class="{ 'no-main': !shows('followers') }" :style="{ '--n': view.accountsShow.length }"
+            :href="a.url" target="_blank" rel="noopener noreferrer"
+          >
             <span class="pg-acct-name">
               <span class="pg-label"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path :d="PLATFORM_ICONS[a.platform].path" :fill="iconColor(a.platform)" /></svg>{{ PLATFORMS[a.platform].label }}</span>
               <span class="pg-small">{{ a.name }}</span>
             </span>
-            <span class="pg-cell pg-acct-main"><span class="pg-big">{{ a.followers != null ? num(a.followers) : '—' }}</span><span class="pg-small">{{ unitOf(a.platform) }}</span></span>
-            <span class="pg-cell"><span class="pg-mid">{{ a.avgViews != null ? num(a.avgViews) : '—' }}</span><span class="pg-small">平均每則觀看</span></span>
-            <span class="pg-cell"><span class="pg-mid">{{ a.rate }}</span><span class="pg-small">互動率</span></span>
-            <span class="pg-cell"><span class="pg-mid">{{ signed(a.growth) }}</span><span class="pg-small">{{ growthLabel(a.platform) }}</span></span>
+            <span v-if="shows('followers')" class="pg-cell pg-acct-main"><span class="pg-big">{{ a.followers != null ? num(a.followers) : '—' }}</span><span class="pg-small">{{ unitOf(a.platform) }}</span></span>
+            <span v-if="shows('avgViews')" class="pg-cell"><span class="pg-mid">{{ a.avgViews != null ? num(a.avgViews) : '—' }}</span><span class="pg-small">平均每則觀看</span></span>
+            <span v-if="shows('rate')" class="pg-cell"><span class="pg-mid">{{ a.rate }}</span><span class="pg-small">互動率</span></span>
+            <span v-if="shows('growth')" class="pg-cell"><span class="pg-mid">{{ signed(a.growth) }}</span><span class="pg-small">{{ growthLabel(a.platform) }}</span></span>
           </a>
         </section>
 
@@ -189,7 +193,7 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
 .pg-hero h1 { font-size: 44px; font-weight: 900; line-height: 1.15; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .pg-bio { max-width: 640px; font-size: 18px; color: var(--pg-muted); overflow-wrap: anywhere; white-space: pre-line; }
 
-.pg-acct { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(4, minmax(0, 1fr)); gap: 8px 16px; align-items: center; padding: 16px 0; }
+.pg-acct { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(var(--n, 4), minmax(0, 1fr)); gap: 8px 16px; align-items: center; padding: 16px 0; }
 .pg-acct + .pg-acct { border-top: 1px solid var(--pg-line); }
 .pg-acct-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pg-cell { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; text-align: right; }
@@ -296,6 +300,7 @@ a.pg-acct:hover .pg-label, .pg-series.v a.pg-top:hover .pg-top-text { text-decor
 @container (max-width: 640px) {
   .pg-acct { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pg-acct-name { grid-column: span 2; }
+  .pg-acct.no-main .pg-acct-name { grid-column: 1 / -1; }
   .pg-acct .pg-cell:not(.pg-acct-main) { align-items: flex-start; text-align: left; }
   .pg-series.v { grid-template-columns: minmax(0, 1fr); }
   .pg-series.v .pg-series-top { border-left: 0; border-top: 1px solid var(--pg-line); }
