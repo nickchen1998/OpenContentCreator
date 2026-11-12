@@ -25,7 +25,11 @@ const words = (p: { accountId: number }) => (platformOf(p) === 'threads' ? { com
 const seriesName = (id: number | null) => series.value.find(s => s.id === id)?.name ?? ''
 const dayOf = (iso: string) => fmtAt(minutesToAt(Math.floor(Date.parse(iso) / 60000) + 480)).replace(/（.）/, ' ')
 
-const filtered = computed(() => inPlatform.value.filter(p => filter.value === 'all' || (filter.value === 'pending' ? p.pending > 0 : p.seriesId == null)))
+const query = ref('')
+const filtered = computed(() => {
+  const matches = keywordMatcher(query.value)
+  return inPlatform.value.filter(p => (filter.value === 'all' || (filter.value === 'pending' ? p.pending > 0 : p.seriesId == null)) && matches(p.text))
+})
 const PAGE_SIZE = 8
 const page = ref(1)
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
@@ -35,7 +39,7 @@ function goPage(n: number) {
   page.value = Math.min(Math.max(1, n), pages.value)
   listEl.value?.scrollTo({ top: 0 })
 }
-watch([filter, platform], () => goPage(1))
+watch([filter, platform, query], () => goPage(1))
 
 const selected = computed(() => posts.value.find(p => p.id === selectedId.value))
 
@@ -94,6 +98,7 @@ async function refresh() {
       <button type="button" class="chip" :aria-pressed="filter === 'pending'" @click="filter = 'pending'">有待回覆的對話</button>
       <button type="button" class="chip" :aria-pressed="filter === 'loose'" @click="filter = 'loose'">未歸入系列文</button>
     </div>
+    <input v-model="query" type="search" class="search" aria-label="搜尋貼文" placeholder="搜尋貼文">
   </div>
 
   <div v-if="loaded && !posts.length" class="card empty">
