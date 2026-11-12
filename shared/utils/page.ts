@@ -1,20 +1,31 @@
 // 公開頁面（每個會員一頁對外的介紹頁，/p/<代號>）：設定的形狀、對外輸出的形狀、配色的推導。
 // 編輯畫面、公開頁面與伺服器共用。
 
-export const PAGE_BLOCKS = ['profile', 'accounts', 'stats', 'posts', 'series', 'text', 'links'] as const
+export const PAGE_BLOCKS = ['profile', 'accounts', 'stats', 'collab', 'posts', 'series', 'text', 'links'] as const
 export type PageBlock = typeof PAGE_BLOCKS[number]
 export const PAGE_BLOCK_LABELS: Record<PageBlock, string> = {
-  profile: '個人簡介', accounts: '社群帳號', stats: '成效數字', posts: '精選貼文', series: '系列文', text: '自訂文字', links: '連結按鈕',
+  profile: '個人簡介', accounts: '各平台數字', stats: '成效數字', collab: '合作', posts: '精選貼文', series: '系列文', text: '自訂文字', links: '連結按鈕',
 }
 export const PAGE_THEMES = ['night', 'forest', 'sunset'] as const
 export type PageTheme = typeof PAGE_THEMES[number]
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,31}$/
 export const COLOR_RE = /^#[0-9a-fA-F]{6}$/
-export const PAGE_LIMITS = { posts: 6, series: 6, links: 6 }
+export const PAGE_LIMITS = { posts: 6, series: 6, links: 6, embeds: 3, collabItems: 8, collabBrands: 12, seriesTop: 3 }
+/** 成效數字可以選的項目（畫面上的順序就是這個順序） */
+export const PAGE_STATS = ['followers', 'avgViews', 'rate', 'growth', 'views', 'posts'] as const
+export type PageStat = typeof PAGE_STATS[number]
+export const PAGE_STAT_LABELS: Record<PageStat, string> = {
+  followers: '全平台總粉絲', avgViews: '平均每則觀看', rate: '互動率', growth: '粉絲成長', views: '總觀看', posts: '發文數',
+}
+export const PAGE_STAT_DAYS = [28, 90] as const
+const EMAIL_PATTERN = new RegExp('^[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+$')
+export const isContactEmail = (value: string) => EMAIL_PATTERN.test(value)
 
 /** 會員在編輯畫面調的東西（草稿與已發布的版本都是這個形狀）。圖片另外存，這裡不含 */
 export interface PageConfig {
   name: string
+  /** 名稱上方的一行類別（例如「美食・旅遊」）；留空顯示 CREATOR */
+  tagline: string
   bio: string
   theme: PageTheme
   /** 自訂主色／背景色；空字串表示跟著主題 */
@@ -25,6 +36,23 @@ export interface PageConfig {
   /** 精選貼文（account_posts 的 id）、系列文的 id，照會員排的順序 */
   postIds: number[]
   seriesIds: number[]
+  /** 成效數字：算幾天、顯示哪幾個 */
+  statsDays: number
+  statsShow: PageStat[]
+  /** 精選貼文：自己挑的不足上限時自動補上近期觀看最高的；能嵌入的用平台的嵌入框呈現 */
+  postsAuto: boolean
+  postsEmbed: boolean
+  /** 合作：接什麼案、合作過誰、怎麼聯絡 */
+  collabItems: string[]
+  collabBrands: string[]
+  contactEmail: string
+  contactLabel: string
+  /** 系列文：熱門貼文怎麼排（h 水平／v 垂直）、要不要列最熱門的幾則、每個系列文的一句介紹（key 是系列文 id） */
+  seriesLayout: 'h' | 'v'
+  seriesTop: boolean
+  seriesText: Record<string, string>
+  /** 每個系列文的封面在 R2 的 key。**只由上傳的端點寫入**，存草稿時不收瀏覽器送來的值 */
+  seriesCovers: Record<string, string>
   textTitle: string
   textBody: string
   links: { label: string, url: string }[]
@@ -34,14 +62,21 @@ export interface PageConfig {
 }
 
 export const defaultPageConfig = (name = ''): PageConfig => ({
-  name, bio: '', theme: 'night', accent: '', bg: '',
-  blocks: PAGE_BLOCKS.map(type => ({ type, on: type === 'profile' || type === 'accounts' })),
+  name, tagline: '', bio: '', theme: 'night', accent: '', bg: '',
+  blocks: PAGE_BLOCKS.map(type => ({ type, on: type === 'profile' || type === 'accounts' || type === 'stats' })),
   postIds: [], seriesIds: [], textTitle: '', textBody: '', links: [], shareTitle: '', shareText: '',
+  statsDays: 28, statsShow: ['followers', 'avgViews', 'rate', 'growth'], postsAuto: true, postsEmbed: true,
+  collabItems: [], collabBrands: [], contactEmail: '', contactLabel: '',
+  seriesLayout: 'h', seriesTop: true, seriesText: {}, seriesCovers: {},
 })
 
 /** 對外輸出的內容：只有打開的區塊才有資料 */
+/** 平台的嵌入框：網址只會是 embedOf 組出來的那幾個平台網域 */
+export interface PageEmbed { platform: Platform, src: string, height: number }
+export interface PagePost { platform: Platform, text: string, url: string, views: number, rate: string, day: string, embed: PageEmbed | null }
 export interface PageView {
   name: string
+  tagline: string
   bio: string
   theme: PageTheme
   accent: string
@@ -50,10 +85,16 @@ export interface PageView {
   coverUrl: string
   /** 打開的區塊，照順序 */
   blocks: PageBlock[]
-  accounts: { platform: Platform, name: string, followers: number | null, url: string }[]
-  stats: { views: number, rate: string, posts: number } | null
-  posts: { platform: Platform, text: string, url: string, views: number, rate: string, day: string }[]
-  series: { name: string, posts: number, views: number }[]
+  /** avgViews／rate 是所選期間內發的貼文；growth 是期間內的粉絲增減，紀錄不夠久就是 null */
+  accounts: { platform: Platform, name: string, followers: number | null, url: string, avgViews: number | null, rate: string, growth: number | null }[]
+  /** n 是數字（null 表示沒有資料），text 是已經排好的字（互動率）；signed 的數字要帶正負號 */
+  stats: { days: number, items: { key: PageStat, label: string, n: number | null, text: string, signed: boolean }[] } | null
+  collab: { items: string[], brands: string[] } | null
+  /** 合作洽詢的按鈕；合作區塊開著而且有填信箱才有 */
+  contact: { label: string, email: string } | null
+  posts: PagePost[]
+  series: { name: string, text: string, coverUrl: string, posts: number, views: number, top: { platform: Platform, text: string, url: string, views: number, day: string }[] }[]
+  seriesLayout: 'h' | 'v'
   textTitle: string
   textBody: string
   links: { label: string, url: string }[]
@@ -108,4 +149,44 @@ export function pageColors(view: Pick<PageView, 'theme' | 'accent' | 'bg'>) {
     '--pg-grid': dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
     '--pg-hero': `radial-gradient(120% 140% at 0% 0%, ${mix(bg, accent, dark ? 0.22 : 0.16)} 0%, ${card} 60%)`,
   }
+}
+
+// ---- 嵌入 ----
+// 精選貼文可以用平台自己的嵌入框呈現（圖片、影片、平台的樣式都帶進來，我們不存任何媒體）。
+// 一律是「直接放 iframe」：不在我們的頁面載入平台的腳本（公開頁面跟後台同一個網域，外來腳本能以登入會員的身分打 API）。
+// Instagram 與 Threads 的網址是官方腳本內部用的，沒有寫在文件上（2026-11-12 實測可用）；哪天失效就把這裡改成回 null，頁面會退回文字卡片。
+
+export function embedOf(platform: Platform, url: string, externalId: string): PageEmbed | null {
+  if (platform === 'youtube') {
+    return /^[\w-]{6,20}$/.test(externalId) ? { platform, src: `https://www.youtube.com/embed/${externalId}`, height: 0 } : null
+  }
+  if (platform === 'instagram') {
+    const m = /^https:\/\/www\.instagram\.com\/(?:[\w.]+\/)?(p|reel|tv)\/([\w-]+)/.exec(url)
+    return m ? { platform, src: `https://www.instagram.com/${m[1]}/${m[2]}/embed/`, height: 560 } : null
+  }
+  if (platform === 'threads') {
+    const m = /^https:\/\/www\.threads\.(?:net|com)\/@([\w.]+)\/post\/([\w-]+)/.exec(url)
+    return m ? { platform, src: `https://www.threads.com/@${m[1]}/post/${m[2]}/embed`, height: 320 } : null
+  }
+  if (platform === 'facebook') {
+    return /^https:\/\/(www\.)?facebook\.com\//.test(url)
+      ? { platform, src: `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(url)}&show_text=true&width=350`, height: 520 }
+      : null
+  }
+  return null
+}
+/** 嵌入框回報自己的高度：Instagram 送 JSON（type: MEASURE），Threads 直接送數字。回傳 0 表示這則訊息不是高度 */
+export function embedHeightOf(origin: string, data: unknown): number {
+  let height = 0
+  if (origin === 'https://www.instagram.com' && typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data)
+      if (parsed?.type === 'MEASURE') height = Number(parsed.details?.height)
+    }
+    catch {}
+  }
+  else if (origin === 'https://www.threads.com' || origin === 'https://www.threads.net') {
+    height = Number(data)
+  }
+  return Number.isFinite(height) && height >= 80 && height <= 3000 ? Math.round(height) : 0
 }

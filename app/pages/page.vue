@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 公開頁面的編輯畫面：左邊調外觀與區塊（開關、順序、內容），右邊是即時預覽。
 // 改動會自動存成草稿；按「發布」才會更新對外看到的版本。
-interface State { slug: string, published: boolean, dirty: boolean, draft: PageConfig, images: { avatar: string, cover: string }, view: PageView }
+interface State { slug: string, published: boolean, dirty: boolean, draft: PageConfig, images: { avatar: string, cover: string, series: Record<string, string> }, view: PageView }
 type Candidate = InsightPost & { seriesId: number | null }
 const { account } = useLookup()
 const state = ref<State>()
@@ -79,7 +79,7 @@ function setColor(key: 'accent' | 'bg', value: string) {
   draft.value[key] = value
   touch()
 }
-async function upload(kind: 'avatar' | 'cover', event: Event) {
+async function upload(kind: 'avatar' | 'cover' | 'series', event: Event, id?: number) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
@@ -90,12 +90,12 @@ async function upload(kind: 'avatar' | 'cover', event: Event) {
     busy.value = false
     return
   }
-  const next = await attempt(() => api<State>('/api/page/image', { method: 'PUT', query: { kind }, body: file, headers: { 'Content-Type': file.type } }), '已上傳')
+  const next = await attempt(() => api<State>('/api/page/image', { method: 'PUT', query: { kind, id }, body: file, headers: { 'Content-Type': file.type } }), '已上傳')
   if (next) apply(next)
   busy.value = false
 }
-async function removeImage(kind: 'avatar' | 'cover') {
-  const next = await attempt(() => api<State>('/api/page/image', { method: 'DELETE', query: { kind } }))
+async function removeImage(kind: 'avatar' | 'cover' | 'series', id?: number) {
+  const next = await attempt(() => api<State>('/api/page/image', { method: 'DELETE', query: { kind, id } }))
   if (next) apply(next)
 }
 
@@ -114,23 +114,43 @@ function toggle(index: number) {
 const noteOf = (type: PageBlock) => {
   const d = draft.value
   if (type === 'profile') return d.name || '還沒填名稱'
-  if (type === 'accounts') return '已連結的帳號與粉絲數'
-  if (type === 'stats') return '近 28 天的觀看、互動率、發文數'
-  if (type === 'posts') return d.postIds.length ? `已選 ${d.postIds.length} 則` : '還沒選'
+  if (type === 'accounts') return '粉絲、平均觀看、互動率、成長'
+  if (type === 'stats') return `近 ${d.statsDays} 天・${d.statsShow.map(k => PAGE_STAT_LABELS[k]).join('、') || '還沒選'}`
+  if (type === 'collab') return [d.collabItems.length ? `${d.collabItems.length} 個項目` : '', d.collabBrands.length ? `${d.collabBrands.length} 個品牌` : '', d.contactEmail].filter(Boolean).join('・') || '還沒填'
+  if (type === 'posts') return [d.postIds.length ? `置頂 ${d.postIds.length} 則` : '', d.postsAuto ? '自動補上' : '', d.postsEmbed ? '嵌入' : ''].filter(Boolean).join('・') || '還沒選'
   if (type === 'series') return d.seriesIds.length ? `已選 ${d.seriesIds.length} 個` : '還沒選'
   if (type === 'text') return d.textTitle || d.textBody.slice(0, 20) || '還沒填'
   return d.links.length ? `${d.links.length} 顆` : '還沒加'
 }
-const editable = (type: PageBlock) => type !== 'accounts' && type !== 'stats'
+const editable = (type: PageBlock) => type !== 'accounts'
 
 // 編輯某個區塊的內容：在視窗裡改一份副本，按儲存才套用
 const editing = ref<PageBlock>()
 const dialogOpen = ref(false)
-const form = reactive({ name: '', bio: '', postIds: [] as number[], seriesIds: [] as number[], textTitle: '', textBody: '', links: [] as { label: string, url: string }[] })
+const form = reactive({
+  name: '', tagline: '', bio: '', postIds: [] as number[], seriesIds: [] as number[], textTitle: '', textBody: '', links: [] as { label: string, url: string }[],
+  statsDays: 28, statsShow: [] as PageStat[], postsAuto: false, postsEmbed: false,
+  collabItems: [] as string[], collabBrands: [] as string[], contactEmail: '', contactLabel: '',
+  seriesLayout: 'h' as 'h' | 'v', seriesTop: false, seriesText: {} as Record<string, string>,
+})
+// 合作項目與品牌：打字按 Enter（或「加入」）變成一個標籤
+const adding = reactive({ collabItems: '', collabBrands: '' })
+function addTag(key: 'collabItems' | 'collabBrands') {
+  const value = adding[key].trim()
+  const max = PAGE_LIMITS[key]
+  if (value && !form[key].includes(value) && form[key].length < max) form[key].push(value)
+  adding[key] = ''
+}
 const dialogError = ref('')
 function edit(type: PageBlock) {
   const d = draft.value
-  Object.assign(form, { name: d.name, bio: d.bio, postIds: [...d.postIds], seriesIds: [...d.seriesIds], textTitle: d.textTitle, textBody: d.textBody, links: d.links.map(l => ({ ...l })) })
+  Object.assign(form, {
+    name: d.name, tagline: d.tagline, bio: d.bio, postIds: [...d.postIds], seriesIds: [...d.seriesIds], textTitle: d.textTitle, textBody: d.textBody, links: d.links.map(l => ({ ...l })),
+    statsDays: d.statsDays, statsShow: [...d.statsShow], postsAuto: d.postsAuto, postsEmbed: d.postsEmbed,
+    collabItems: [...d.collabItems], collabBrands: [...d.collabBrands], contactEmail: d.contactEmail, contactLabel: d.contactLabel,
+    seriesLayout: d.seriesLayout, seriesTop: d.seriesTop, seriesText: { ...d.seriesText },
+  })
+  Object.assign(adding, { collabItems: '', collabBrands: '' })
   if (type === 'links' && !form.links.length) form.links.push({ label: '', url: '' })
   editing.value = type
   dialogError.value = ''
@@ -155,9 +175,19 @@ function applyEdit() {
     dialogError.value = `最多選 ${PAGE_LIMITS.series} 個`
     return
   }
-  if (type === 'profile') Object.assign(d, { name: form.name, bio: form.bio })
-  if (type === 'posts') d.postIds = [...form.postIds]
-  if (type === 'series') d.seriesIds = [...form.seriesIds]
+  if (type === 'collab') {
+    addTag('collabItems')
+    addTag('collabBrands')
+    if (form.contactEmail.trim() && !isContactEmail(form.contactEmail.trim())) {
+      dialogError.value = '聯絡信箱的格式不對'
+      return
+    }
+    Object.assign(d, { collabItems: [...form.collabItems], collabBrands: [...form.collabBrands], contactEmail: form.contactEmail.trim(), contactLabel: form.contactLabel.trim() })
+  }
+  if (type === 'profile') Object.assign(d, { name: form.name, tagline: form.tagline, bio: form.bio })
+  if (type === 'stats') Object.assign(d, { statsDays: form.statsDays, statsShow: PAGE_STATS.filter(k => form.statsShow.includes(k)) })
+  if (type === 'posts') Object.assign(d, { postIds: [...form.postIds], postsAuto: form.postsAuto, postsEmbed: form.postsEmbed })
+  if (type === 'series') Object.assign(d, { seriesIds: [...form.seriesIds], seriesLayout: form.seriesLayout, seriesTop: form.seriesTop, seriesText: { ...form.seriesText } })
   if (type === 'text') Object.assign(d, { textTitle: form.textTitle, textBody: form.textBody })
   dialogOpen.value = false
   touch()
@@ -273,13 +303,42 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
       </section>
     </div>
 
-    <AppDialog v-model="dialogOpen" :wide="editing === 'posts'" :title="editing ? PAGE_BLOCK_LABELS[editing] : ''" :error="dialogError" submit-label="套用" @submit="applyEdit">
+    <AppDialog v-model="dialogOpen" :wide="editing === 'posts' || editing === 'series'" :title="editing ? PAGE_BLOCK_LABELS[editing] : ''" :error="dialogError" submit-label="套用" @submit="applyEdit">
       <template v-if="editing === 'profile'">
         <label class="field">名稱<input v-model="form.name" type="text" maxlength="40"></label>
+        <label class="field">類別<input v-model="form.tagline" type="text" maxlength="30" placeholder="美食・旅遊"></label>
         <label class="field">介紹<textarea v-model="form.bio" rows="4" maxlength="300" /></label>
       </template>
+      <template v-else-if="editing === 'stats'">
+        <div class="seg" role="group" aria-label="期間" style="align-self: flex-start">
+          <button v-for="n in PAGE_STAT_DAYS" :key="n" type="button" :aria-pressed="form.statsDays === n" @click="form.statsDays = n">{{ n }} 天</button>
+        </div>
+        <div class="stat-options">
+          <label v-for="k in PAGE_STATS" :key="k" class="check"><input v-model="form.statsShow" type="checkbox" :value="k">{{ PAGE_STAT_LABELS[k] }}</label>
+        </div>
+      </template>
+      <template v-else-if="editing === 'collab'">
+        <div v-for="group in ([['collabItems', '合作項目', 20], ['collabBrands', '合作過的品牌', 30]] as const)" :key="group[0]" class="col" style="gap: 6px">
+          <span class="small muted">{{ group[1] }}</span>
+          <div class="row" style="gap: 8px">
+            <span v-for="(item, ti) in form[group[0]]" :key="item" class="chip" style="gap: 6px">{{ item }}<button type="button" class="tag-x" :aria-label="`移除 ${item}`" @click="form[group[0]].splice(ti, 1)">×</button></span>
+            <input
+              v-if="form[group[0]].length < PAGE_LIMITS[group[0]]" v-model="adding[group[0]]" type="text" :maxlength="group[2]" :aria-label="`新增${group[1]}`" placeholder="新增"
+              style="width: 130px" @keydown.enter.prevent="addTag(group[0])" @blur="addTag(group[0])"
+            >
+          </div>
+        </div>
+        <div class="row" style="gap: 12px; flex-wrap: nowrap; align-items: flex-end">
+          <label class="field" style="flex: 2 1 200px">聯絡信箱<input v-model="form.contactEmail" type="text" inputmode="email" autocomplete="off" maxlength="120"></label>
+          <label class="field" style="flex: 1 1 120px">按鈕文字<input v-model="form.contactLabel" type="text" maxlength="20" placeholder="合作洽詢"></label>
+        </div>
+      </template>
       <template v-else-if="editing === 'posts'">
-        <span class="small muted">已選 {{ form.postIds.length }}／{{ PAGE_LIMITS.posts }} 則</span>
+        <div class="row" style="gap: 6px 20px">
+          <label class="check"><input v-model="form.postsAuto" type="checkbox">不足 {{ PAGE_LIMITS.posts }} 則時自動補上觀看最高的</label>
+          <label class="check"><input v-model="form.postsEmbed" type="checkbox">前 {{ PAGE_LIMITS.embeds }} 則嵌入平台的貼文</label>
+        </div>
+        <span class="small muted">置頂 {{ form.postIds.length }}／{{ PAGE_LIMITS.posts }} 則</span>
         <div class="post-list" tabindex="0" aria-label="可以選的貼文">
           <label v-for="p in candidates" :key="p.id" class="post-option">
             <input v-model="form.postIds" type="checkbox" :value="p.id" :disabled="!form.postIds.includes(p.id) && form.postIds.length >= PAGE_LIMITS.posts">
@@ -292,9 +351,28 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
         </div>
       </template>
       <template v-else-if="editing === 'series'">
-        <label v-for="s in seriesList" :key="s.id" class="check">
-          <input v-model="form.seriesIds" type="checkbox" :value="s.id" :disabled="!form.seriesIds.includes(s.id) && form.seriesIds.length >= PAGE_LIMITS.series">{{ s.name }}
-        </label>
+        <div class="row between">
+          <label class="check"><input v-model="form.seriesTop" type="checkbox">顯示最熱門的 {{ PAGE_LIMITS.seriesTop }} 則貼文</label>
+          <div class="seg" role="group" aria-label="熱門貼文的排列">
+            <button type="button" :aria-pressed="form.seriesLayout === 'h'" @click="form.seriesLayout = 'h'">水平</button>
+            <button type="button" :aria-pressed="form.seriesLayout === 'v'" @click="form.seriesLayout = 'v'">垂直</button>
+          </div>
+        </div>
+        <div class="post-list" tabindex="0" aria-label="可以選的系列文">
+          <div v-for="s in seriesList" :key="s.id" class="series-option">
+            <label class="check bold">
+              <input v-model="form.seriesIds" type="checkbox" :value="s.id" :disabled="!form.seriesIds.includes(s.id) && form.seriesIds.length >= PAGE_LIMITS.series">{{ s.name }}
+            </label>
+            <template v-if="form.seriesIds.includes(s.id)">
+              <div class="row" style="gap: 8px 12px">
+                <div v-if="state.images.series[s.id]" class="series-cover" role="img" :aria-label="`${s.name} 的封面`" :style="{ backgroundImage: `url('${state.images.series[s.id]}')` }" />
+                <label class="btn sm">{{ state.images.series[s.id] ? '更換封面' : '上傳封面' }}<input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" :disabled="busy" @change="upload('series', $event, s.id)"></label>
+                <button v-if="state.images.series[s.id]" type="button" class="btn sm" @click="removeImage('series', s.id)">移除封面</button>
+              </div>
+              <label class="field">介紹<input v-model="form.seriesText[s.id]" type="text" maxlength="80"></label>
+            </template>
+          </div>
+        </div>
         <div v-if="!seriesList.length" class="empty">還沒有系列文</div>
       </template>
       <template v-else-if="editing === 'text'">

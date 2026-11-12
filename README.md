@@ -111,3 +111,7 @@ Secret 用 `wrangler secret put` 設定，不放進任何會 commit 的檔案：
 
 - `NUXT_SESSION_PASSWORD`：session cookie 的加密密鑰
 - `NUXT_TOKEN_KEY`：加密平台 token 的金鑰（換掉的話已連結的帳號都要重新連結）
+
+## 授權
+
+以 [MIT License](LICENSE) 釋出。

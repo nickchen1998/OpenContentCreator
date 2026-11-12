@@ -4,5 +4,5 @@ export default defineEventHandler(async (event) => {
   const found = await loadPublishedPage(getRouterParam(event, 'slug') ?? '')
   if (!found) throw notFound('頁面')
   setResponseHeader(event, 'Cache-Control', 'public, max-age=120')
-  return buildPageView(found.row.ownerId, found.config, livePageImages(found.row))
+  return buildPageView(found.row.ownerId, found.config, livePageImages(found.row, found.config))
 })

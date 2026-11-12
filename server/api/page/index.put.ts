@@ -10,7 +10,9 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const [taken] = await db.select({ ownerId: publicPages.ownerId }).from(publicPages).where(and(eq(publicPages.slug, slug), ne(publicPages.ownerId, uid)))
   if (taken) throw bad('這個網址代號已經有人用了')
-  const draft = JSON.stringify(normalizePageConfig(body.draft))
+  // 系列文封面的 key 只由上傳的端點寫入：沿用已經存著的，不收瀏覽器送來的（否則可以指到別人的圖）
+  const existing = await loadPageRow(uid)
+  const draft = JSON.stringify({ ...normalizePageConfig(body.draft), seriesCovers: parsePageConfig(existing?.draft)?.seriesCovers ?? {} })
   const now = nowIso()
   await db.insert(publicPages).values({ ownerId: uid, slug, draft, updatedAt: now })
     .onConflictDoUpdate({ target: publicPages.ownerId, set: { slug, draft, updatedAt: now } })
