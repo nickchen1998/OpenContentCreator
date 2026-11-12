@@ -98,7 +98,6 @@ async function refresh() {
       <button type="button" class="chip" :aria-pressed="filter === 'pending'" @click="filter = 'pending'">有待回覆的對話</button>
       <button type="button" class="chip" :aria-pressed="filter === 'loose'" @click="filter = 'loose'">未歸入系列文</button>
     </div>
-    <input v-model="query" type="search" class="search" aria-label="搜尋貼文" placeholder="搜尋貼文">
   </div>
 
   <div v-if="loaded && !posts.length" class="card empty">
@@ -106,9 +105,12 @@ async function refresh() {
   </div>
   <div v-else class="fit-grid cols-2 fill">
     <section class="card" aria-label="貼文">
-      <div class="row between">
-        <h2>貼文</h2>
-        <span class="small muted">{{ filtered.length }} 則</span>
+      <div class="row between" style="flex-wrap: nowrap">
+        <div class="row" style="gap: 10px; flex-wrap: nowrap; align-items: baseline">
+          <h2>貼文</h2>
+          <span class="small muted" style="white-space: nowrap">{{ filtered.length }} 則</span>
+        </div>
+        <input v-model="query" type="search" class="search" aria-label="搜尋貼文" placeholder="搜尋貼文">
       </div>
       <div ref="listEl" class="thread-list fill scroll">
         <button v-for="p in shown" :key="p.id" type="button" class="thread-item" :aria-pressed="p.id === selectedId" @click="pick(p.id)">
