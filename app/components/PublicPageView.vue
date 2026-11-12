@@ -28,18 +28,6 @@ const statText = (item: { n: number | null, text: string, signed: boolean }) => 
 const signed = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${num(n)}`)
 const growthLabel = (platform: Platform) => (platform === 'youtube' ? '訂閱成長' : '粉絲成長')
 
-// 嵌入框（平台的 iframe）的高度：Instagram 與 Threads 會用 postMessage 回報實際高度，收到就照著調；
-// 只認「訊息真的來自我們頁面上那個 iframe」而且來源是該平台的，其他訊息一律不理
-const root = ref<HTMLElement>()
-const heights = reactive<Record<string, number>>({})
-function onMessage(event: MessageEvent) {
-  const frame = [...(root.value?.querySelectorAll<HTMLIFrameElement>('iframe[data-embed]') ?? [])].find(f => f.contentWindow === event.source)
-  const height = frame ? embedHeightOf(event.origin, event.data) : 0
-  if (frame && height) heights[frame.dataset.embed!] = height
-}
-onMounted(() => window.addEventListener('message', onMessage))
-onBeforeUnmount(() => window.removeEventListener('message', onMessage))
-const frameStyle = (embed: PageEmbed) => (embed.platform === 'youtube' ? { aspectRatio: '16 / 9' } : { height: `${heights[embed.src] ?? embed.height}px` })
 // 窄螢幕上精選貼文的「左右滑動」提示：滑過就收起來
 const year = new Date().getFullYear()
 const swiped = ref(false)
@@ -49,7 +37,7 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
 </script>
 
 <template>
-  <div ref="root" class="pg" :class="{ 'pg-animate': animate }" :style="colors">
+  <div class="pg" :class="{ 'pg-animate': animate }" :style="colors">
     <div v-if="view.coverUrl" class="pg-cover" :style="{ backgroundImage: `url('${view.coverUrl}')` }" aria-hidden="true" />
     <div class="pg-inner">
       <template v-for="(block, i) in view.blocks" :key="block">
@@ -115,7 +103,7 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
               <div v-if="p.embed" class="pg-card pg-post pg-embed">
                 <div class="pg-frame">
                   <iframe
-                    :src="p.embed.src" :data-embed="p.embed.src" :style="frameStyle(p.embed)" :title="`${PLATFORMS[p.platform].label} 貼文`"
+                    :src="p.embed.src" :title="`${PLATFORMS[p.platform].label} 貼文`"
                     loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"
                     sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
                   />
@@ -221,7 +209,8 @@ const initial = computed(() => (props.view.name.trim()[0] ?? '?').toUpperCase())
 .pg-post.pg-embed { padding: 0; gap: 0; min-height: 0; overflow: hidden; }
 .pg-frame { position: relative; }
 .pg-frame-cover { display: none; position: absolute; inset: 0; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.pg-embed iframe { display: block; width: 100%; border: 0; background: #ffffff; }
+/* 嵌入框一律同一個高度（使用者要求）：各平台貼文長短差很多，照實際高度排會高高低低。比較長的在框裡自己捲，比較短的下面留白 */
+.pg-embed iframe { display: block; width: 100%; height: 480px; border: 0; background: #ffffff; }
 .pg-embed .pg-post-foot { margin: 0; padding: 14px 20px; }
 .pg-series { overflow: hidden; display: flex; flex-direction: column; }
 .pg-series-head { display: flex; flex-direction: column; min-width: 0; }

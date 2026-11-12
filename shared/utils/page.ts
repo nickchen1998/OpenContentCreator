@@ -39,7 +39,7 @@ export interface PageConfig {
   /** 成效數字：算幾天、顯示哪幾個 */
   statsDays: number
   statsShow: PageStat[]
-  /** 精選貼文：能嵌入的用平台的嵌入框呈現（自己挑的不足上限時一律自動補上近期觀看最高的，沒有開關） */
+  /** 精選貼文：能嵌入的用平台的嵌入框呈現（只顯示會員自己挑的那幾則，不自動補） */
   postsEmbed: boolean
   /** 合作：接什麼案、合作過誰、怎麼聯絡 */
   collabItems: string[]
@@ -71,7 +71,7 @@ export const defaultPageConfig = (name = ''): PageConfig => ({
 
 /** 對外輸出的內容：只有打開的區塊才有資料 */
 /** 平台的嵌入框：網址只會是 embedOf 組出來的那幾個平台網域 */
-export interface PageEmbed { platform: Platform, src: string, height: number }
+export interface PageEmbed { platform: Platform, src: string }
 export interface PagePost { platform: Platform, text: string, url: string, views: number, rate: string, day: string, embed: PageEmbed | null }
 export interface PageView {
   name: string
@@ -157,35 +157,20 @@ export function pageColors(view: Pick<PageView, 'theme' | 'accent' | 'bg'>) {
 
 export function embedOf(platform: Platform, url: string, externalId: string): PageEmbed | null {
   if (platform === 'youtube') {
-    return /^[\w-]{6,20}$/.test(externalId) ? { platform, src: `https://www.youtube.com/embed/${externalId}`, height: 0 } : null
+    return /^[\w-]{6,20}$/.test(externalId) ? { platform, src: `https://www.youtube.com/embed/${externalId}` } : null
   }
   if (platform === 'instagram') {
     const m = /^https:\/\/www\.instagram\.com\/(?:[\w.]+\/)?(p|reel|tv)\/([\w-]+)/.exec(url)
-    return m ? { platform, src: `https://www.instagram.com/${m[1]}/${m[2]}/embed/`, height: 560 } : null
+    return m ? { platform, src: `https://www.instagram.com/${m[1]}/${m[2]}/embed/` } : null
   }
   if (platform === 'threads') {
     const m = /^https:\/\/www\.threads\.(?:net|com)\/@([\w.]+)\/post\/([\w-]+)/.exec(url)
-    return m ? { platform, src: `https://www.threads.com/@${m[1]}/post/${m[2]}/embed`, height: 320 } : null
+    return m ? { platform, src: `https://www.threads.com/@${m[1]}/post/${m[2]}/embed` } : null
   }
   if (platform === 'facebook') {
     return /^https:\/\/(www\.)?facebook\.com\//.test(url)
-      ? { platform, src: `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(url)}&show_text=true&width=350`, height: 520 }
+      ? { platform, src: `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(url)}&show_text=true&width=350` }
       : null
   }
   return null
-}
-/** 嵌入框回報自己的高度：Instagram 送 JSON（type: MEASURE），Threads 直接送數字。回傳 0 表示這則訊息不是高度 */
-export function embedHeightOf(origin: string, data: unknown): number {
-  let height = 0
-  if (origin === 'https://www.instagram.com' && typeof data === 'string') {
-    try {
-      const parsed = JSON.parse(data)
-      if (parsed?.type === 'MEASURE') height = Number(parsed.details?.height)
-    }
-    catch {}
-  }
-  else if (origin === 'https://www.threads.com' || origin === 'https://www.threads.net') {
-    height = Number(data)
-  }
-  return Number.isFinite(height) && height >= 80 && height <= 3000 ? Math.round(height) : 0
 }
