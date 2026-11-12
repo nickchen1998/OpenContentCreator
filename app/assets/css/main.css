@@ -1,11 +1,11 @@
-/* 設計語言比照 TuSoul：米白底淡格線、白卡片大圓角、深綠漸層側欄、膠囊按鈕、英文小標。
+/* 設計語言：米白底淡格線、白卡片大圓角、深綠漸層側欄、膠囊按鈕、英文小標。
    字級：內文 15、頁標題 24/800、區塊標題 17/700、輔助文字 13、英文小標 11、按鈕 14 / 13、表格 13.5。 */
 :root {
   /* 底色與面 */
   --bg: #f7f6ee; --card: #ffffff; --sidebar: #66796a; --sidebar-deep: #4f604f;
   /* 綠系 */
   --green-deep: #3e5346; --olive: #7a7a33; --green-soft: #e8eee6; --green-faint: #f1f4ee;
-  /* 文字與線。--muted 比 TuSoul 的 #8a9388 深一階，13px 的輔助文字在白底才有 4.5:1 */
+  /* 文字與線。--muted 用比 #8a9388 深一階的顏色，13px 的輔助文字在白底才有 4.5:1 */
   --ink: #2e362f; --ink-2: #4a544b; --muted: #68736a; --line: #dde0d3; --line-strong: #b9bfb0;
   /* 狀態 */
   --danger: #a4442e; --danger-bg: #fbeee9; --warn: #7d5c12; --warn-bg: #fbf4e4; --warn-line: #ddcb9e; --chip-bg: #f0f0ea;

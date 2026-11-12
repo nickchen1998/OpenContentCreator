@@ -2,9 +2,16 @@
 
 產品名稱一律寫 **OpenContentCreator**，不要用中文名稱。功能與架構總覽見 README.md。
 
+## 定位（2026-11-12 使用者決定）
+
+- **開源、自己架設、不收費**（MIT License）：使用者自己到 GitHub 把程式拉下來，部署到自己的 Cloudflare 帳號。
+  作者的站只供自用，**不對外開放註冊，也不是 SaaS**；唯一可能收費的是協助架設。文件與介面都不要寫成「來註冊使用」。
+- **這個 repo 是公開的**：這份檔案、README、commit 訊息、程式裡的註解與測試資料，任何人都看得到。
+  不要寫進金鑰、權杖、密碼（測試用的也不行）、真實帳號的名稱或數字、備份、個人聯絡方式；尚未修補的弱點細節也不要寫在這裡。
+
 ## 部署與資料的規則
 
-- 正式環境是 Cloudflare Worker `opencontentcreator`（網域 opencontentcreator.codeworldbagel.com）。
+- 作者自己的站是 Cloudflare Worker `opencontentcreator`（網域與資料庫 id 在 `wrangler.jsonc`；自己架設的人要換成自己的，README 有寫），以下稱「正式環境」。
   `wrangler deploy`、`wrangler d1 migrations apply DB --remote`、改 secret 都等於動正式環境，**先問使用者**。
 - **不要把任何金鑰寫進會 commit 的檔案，測試用的也不行。** 正式的值在 `wrangler secret`，
   本機副本在被 gitignore 的 `.env.production`。
@@ -25,7 +32,7 @@
 
 ## 介面
 
-- 設計語言比照 TuSoul（`../TuSoul/web/app/assets/css/`）：米白底淡格線、白卡片大圓角、深綠漸層側欄、
+- 設計語言：米白底淡格線、白卡片大圓角、深綠漸層側欄、
   膠囊按鈕、英文小標（`.en-label`）。token 與共用 class 都在 `app/assets/css/main.css`，不用 UI 框架。
 - 字級（2026-11-11 使用者覺得太小、對小螢幕不友善，整站放大一級）：內文 16、頁標題 24/800、區塊標題 18/700、輔助文字 14、
   英文小標 12、按鈕 15／14、表格 14.5、標籤 13、圖表 13。**最小不低於 12**，新的樣式不要再用 13 以下的字放內容。
@@ -169,7 +176,7 @@
 - **安全性（2026-11-11 掃描後補的）**：session 的 `secure.pv` 是密碼版本，middleware 每個請求比對，改密碼／重設密碼後舊的登入全部失效；
   登入時帳號不存在也會做一次假的密碼運算（不洩漏帳號存不存在），並順手清掉一天前的失敗紀錄；靜態頁面的安全標頭在 `public/_headers`
   （外殼有內嵌腳本，不能限制 script-src）；匯出 CSV 時外人寫的內容要防公式（`=`、`+`、`-`、`@` 開頭補單引號）；
-  轉址回頁面時只帶固定代碼、不帶任意文字。已知未修：PBKDF2 次數偏低（受 Free 方案 CPU 限制）、登入鎖定以帳號為單位。
+  轉址回頁面時只帶固定代碼、不帶任意文字。密碼雜湊的次數與登入鎖定的做法受 Free 方案限制，要調整先跟使用者討論。
 - 密碼雜湊是 PBKDF2 20,000 次（Free 方案的 CPU 上限），`server/utils/passwords.ts` 與 `scripts/set-user.mjs` 要用同一種格式。
 - drizzle-kit 在非互動環境遇到「是改名還是新增」會直接失敗：一次 migration 不要同時刪表又加表。真的避不開時用 pty 代答
   （第一個選項是「新增」），產出的 snapshot 可以留、**SQL 要自己重寫**。
