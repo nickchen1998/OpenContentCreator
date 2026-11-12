@@ -43,7 +43,7 @@ export function normalizePageConfig(input: unknown): PageConfig {
     Object.entries(v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
       .filter(([id]) => /^[1-9]\d{0,9}$/.test(id)).map(([id, value]) => [id, clean(value)] as const).filter(([, value]) => value).slice(0, 50),
   )
-  // 這幾個是後來才加的設定：舊的草稿／已發布版本裡沒有，沒有時維持原本的樣子（不自動補、不嵌入、原本那三個數字），頁面才不會在部署後自己變
+  // 這幾個是後來才加的設定：舊的草稿／已發布版本裡沒有，沒有時維持原本的樣子（不嵌入、原本那三個數字），頁面才不會在部署後自己變
   const legacy = !Array.isArray(body.statsShow)
   const email = text(body.contactEmail, 120)
   return {
@@ -130,7 +130,6 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
   const today = todayTaipei()
   const since = new Date(Date.now() - config.statsDays * 86400_000).toISOString()
   const startDay = addDays(today, -config.statsDays)
-  const autoSince = new Date(Date.now() - 90 * 86400_000).toISOString()
   const engagement = sql<number>`${accountPosts.likes} + ${accountPosts.comments} + ${accountPosts.shares}`
   const numbers = on.has('accounts') || on.has('stats')
   const postsOn = on.has('posts')
@@ -139,7 +138,7 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
     id: accountPosts.id, platform: accounts.platform, text: accountPosts.text, url: accountPosts.url, externalId: accountPosts.externalId,
     views: accountPosts.views, engagement, publishedAt: accountPosts.publishedAt,
   }
-  const [accountRows, statRows, postRows, autoRows, seriesRows, topRows] = await db.batch([
+  const [accountRows, statRows, postRows, seriesRows, topRows] = await db.batch([
     db.select({
       id: accounts.id, platform: accounts.platform, name: accounts.name, externalId: connections.externalId, externalName: connections.externalName,
       followers: sql<number | null>`(select s.followers from account_stats s where s.account_id = ${accounts.id} order by s.day desc limit 1)`,
@@ -154,10 +153,6 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
       .where(numbers ? and(eq(accounts.ownerId, ownerId), gte(accountPosts.publishedAt, since)) : sql`0`).groupBy(accountPosts.accountId),
     db.select(postColumns).from(accountPosts).innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
       .where(postsOn && config.postIds.length ? and(eq(accounts.ownerId, ownerId), inIdList(accountPosts.id, config.postIds)) : sql`0`),
-    // 自動補上的：近 90 天觀看最高的。多抓幾則，扣掉已經置頂的還夠用
-    db.select(postColumns).from(accountPosts).innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
-      .where(postsOn ? and(eq(accounts.ownerId, ownerId), gte(accountPosts.publishedAt, autoSince)) : sql`0`)
-      .orderBy(desc(accountPosts.views), desc(accountPosts.id)).limit(PAGE_LIMITS.posts * 2),
     db.select({
       id: collections.id, name: collections.name, posts: sql<number>`count(${accountPosts.id})`, views: sql<number>`coalesce(sum(${accountPosts.views}), 0)`,
     }).from(collections).leftJoin(collectionPosts, eq(collectionPosts.collectionId, collections.id))
@@ -204,9 +199,9 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
     posts: { n: total.posts, text: '' },
   }
 
-  // ---- 精選貼文：自己挑的排前面，不足的自動補；啟用嵌入時能嵌入的都用平台的嵌入框 ----
+  // ---- 精選貼文：只顯示會員自己挑的（不自動補，使用者要求）；啟用嵌入時能嵌入的都用平台的嵌入框 ----
   const pinned = config.postIds.map(id => postRows.find(p => p.id === id)).filter((p): p is typeof postRows[number] => Boolean(p))
-  const picked = [...pinned, ...autoRows.filter(p => !pinned.some(x => x.id === p.id))].filter(p => isPlatform(p.platform)).slice(0, PAGE_LIMITS.posts)
+  const picked = pinned.filter(p => isPlatform(p.platform)).slice(0, PAGE_LIMITS.posts)
   const posts = !postsOn ? [] : picked.map((p) => {
     const platform = p.platform as Platform
     const embed = config.postsEmbed ? embedOf(platform, p.url, p.externalId) : null

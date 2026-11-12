@@ -117,7 +117,7 @@ const noteOf = (type: PageBlock) => {
   if (type === 'accounts') return '粉絲、平均觀看、互動率、成長'
   if (type === 'stats') return `近 ${d.statsDays} 天・${d.statsShow.map(k => PAGE_STAT_LABELS[k]).join('、') || '還沒選'}`
   if (type === 'collab') return [d.collabItems.length ? `${d.collabItems.length} 個項目` : '', d.collabBrands.length ? `${d.collabBrands.length} 個品牌` : '', d.contactEmail].filter(Boolean).join('・') || '還沒填'
-  if (type === 'posts') return [d.postIds.length ? `置頂 ${d.postIds.length} 則` : '', d.postsEmbed ? '嵌入' : ''].filter(Boolean).join('・') || '自動帶入觀看最高的'
+  if (type === 'posts') return [d.postIds.length ? `已選 ${d.postIds.length} 則` : '還沒選', d.postsEmbed ? '嵌入' : ''].filter(Boolean).join('・')
   if (type === 'series') return d.seriesIds.length ? `已選 ${d.seriesIds.length} 個` : '還沒選'
   if (type === 'text') return d.textTitle || d.textBody.slice(0, 20) || '還沒填'
   return d.links.length ? `${d.links.length} 顆` : '還沒加'
@@ -343,7 +343,7 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
           <InfoTip text="啟用後會改為將平台呈現的貼文直接嵌入，圖片與影片會一起顯示。" />
         </div>
         <div class="row between">
-          <span class="small muted">置頂 {{ form.postIds.length }}／{{ PAGE_LIMITS.posts }} 則</span>
+          <span class="small muted">已選 {{ form.postIds.length }}／{{ PAGE_LIMITS.posts }} 則</span>
           <input v-model="postQuery" type="search" class="search" aria-label="搜尋貼文" placeholder="搜尋貼文" @keydown.enter.prevent>
         </div>
         <div class="post-list" tabindex="0" aria-label="可以選的貼文">
