@@ -18,6 +18,10 @@ export const PAGE_STAT_LABELS: Record<PageStat, string> = {
   followers: '全平台總粉絲', avgViews: '平均每則觀看', rate: '互動率', growth: '粉絲成長', views: '總觀看', posts: '發文數',
 }
 export const PAGE_STAT_DAYS = [28, 90] as const
+/** 「各平台數字」每一列可以選的數字 */
+export const PAGE_ACCOUNT_STATS = ['followers', 'avgViews', 'rate', 'growth'] as const
+export type PageAccountStat = typeof PAGE_ACCOUNT_STATS[number]
+export const PAGE_ACCOUNT_STAT_LABELS: Record<PageAccountStat, string> = { followers: '粉絲數', avgViews: '平均每則觀看', rate: '互動率', growth: '粉絲成長' }
 const EMAIL_PATTERN = new RegExp('^[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+$')
 export const isContactEmail = (value: string) => EMAIL_PATTERN.test(value)
 
@@ -39,6 +43,9 @@ export interface PageConfig {
   /** 成效數字：算幾天、顯示哪幾個 */
   statsDays: number
   statsShow: PageStat[]
+  /** 各平台數字：每一列顯示哪幾個數字、哪些帳號不要列出來（帳號 id） */
+  accountsShow: PageAccountStat[]
+  accountsHidden: number[]
   /** 精選貼文：能嵌入的用平台的嵌入框呈現（只顯示會員自己挑的那幾則，不自動補） */
   postsEmbed: boolean
   /** 合作：接什麼案、合作過誰、怎麼聯絡 */
@@ -64,7 +71,7 @@ export const defaultPageConfig = (name = ''): PageConfig => ({
   name, tagline: '', bio: '', theme: 'night', accent: '', bg: '',
   blocks: PAGE_BLOCKS.map(type => ({ type, on: type === 'profile' || type === 'accounts' || type === 'stats' })),
   postIds: [], seriesIds: [], textTitle: '', textBody: '', links: [], shareTitle: '', shareText: '',
-  statsDays: 28, statsShow: ['followers', 'avgViews', 'rate', 'growth'], postsEmbed: true,
+  statsDays: 28, statsShow: ['followers', 'avgViews', 'rate', 'growth'], accountsShow: [...PAGE_ACCOUNT_STATS], accountsHidden: [], postsEmbed: true,
   collabItems: [], collabBrands: [], contactEmail: '', contactLabel: '',
   seriesLayout: 'h', seriesTop: true, seriesText: {}, seriesCovers: {},
 })
@@ -86,6 +93,8 @@ export interface PageView {
   blocks: PageBlock[]
   /** avgViews／rate 是所選期間內發的貼文；growth 是期間內的粉絲增減，紀錄不夠久就是 null */
   accounts: { platform: Platform, name: string, followers: number | null, url: string, avgViews: number | null, rate: string, growth: number | null }[]
+  /** 各平台那幾列要顯示的數字；沒選的那幾個欄位不會帶值 */
+  accountsShow: PageAccountStat[]
   /** n 是數字（null 表示沒有資料），text 是已經排好的字（互動率）；signed 的數字要帶正負號 */
   stats: { days: number, items: { key: PageStat, label: string, n: number | null, text: string, signed: boolean }[] } | null
   collab: { items: string[], brands: string[] } | null

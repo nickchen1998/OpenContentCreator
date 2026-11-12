@@ -58,6 +58,8 @@ export function normalizePageConfig(input: unknown): PageConfig {
     seriesIds: ids(body.seriesIds, PAGE_LIMITS.series),
     statsDays: PAGE_STAT_DAYS.includes(body.statsDays as 28) ? body.statsDays as number : 28,
     statsShow: legacy ? ['views', 'rate', 'posts'] : PAGE_STATS.filter(k => (body.statsShow as unknown[]).includes(k)),
+    accountsShow: Array.isArray(body.accountsShow) ? PAGE_ACCOUNT_STATS.filter(k => (body.accountsShow as unknown[]).includes(k)) : [...PAGE_ACCOUNT_STATS],
+    accountsHidden: ids(body.accountsHidden, 50),
     postsEmbed: body.postsEmbed === true,
     collabItems: list(body.collabItems, PAGE_LIMITS.collabItems, 20),
     collabBrands: list(body.collabBrands, PAGE_LIMITS.collabBrands, 30),
@@ -180,7 +182,7 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
   const perAccount = accountRows.filter(a => isPlatform(a.platform)).map((a) => {
     const stat = statRows.find(r => r.accountId === a.id)
     return {
-      platform: a.platform as Platform, name: a.externalName || a.name, followers: a.followers, url: profileUrl(a.platform, a.externalId, a.externalName),
+      id: a.id, platform: a.platform as Platform, name: a.externalName || a.name, followers: a.followers, url: profileUrl(a.platform, a.externalId, a.externalName),
       views: stat?.views ?? 0, engagement: stat?.engagement ?? 0, posts: stat?.posts ?? 0,
       growth: a.followers != null && a.base != null ? a.followers - a.base : null,
     }
@@ -208,16 +210,22 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
     return { platform, text: p.text, url: safeUrl(p.url), views: p.views, rate: rateOf(p.engagement, p.views), day: dayOf(p.publishedAt), embed }
   })
 
+  const showAccount = new Set(config.accountsShow)
   const email = on.has('collab') ? config.contactEmail : ''
   return {
     name: config.name, tagline: on.has('profile') ? config.tagline : '', bio: on.has('profile') ? config.bio : '',
     theme: config.theme, accent: config.accent, bg: config.bg,
     avatarUrl: on.has('profile') ? images.avatar : '', coverUrl: images.cover,
     blocks: config.blocks.filter(b => b.on).map(b => b.type),
-    accounts: !on.has('accounts') ? [] : perAccount.map(a => ({
-      platform: a.platform, name: a.name, followers: a.followers, url: a.url,
-      avgViews: a.posts ? Math.round(a.views / a.posts) : null, rate: rateOf(a.engagement, a.views), growth: a.growth,
+    // 會員沒選的數字不帶出去；不想列出來的帳號整列拿掉（最上面的總數仍然是全部帳號加總）
+    accounts: !on.has('accounts') ? [] : perAccount.filter(a => !config.accountsHidden.includes(a.id)).map(a => ({
+      platform: a.platform, name: a.name, url: a.url,
+      followers: showAccount.has('followers') ? a.followers : null,
+      avgViews: showAccount.has('avgViews') && a.posts ? Math.round(a.views / a.posts) : null,
+      rate: showAccount.has('rate') ? rateOf(a.engagement, a.views) : '',
+      growth: showAccount.has('growth') ? a.growth : null,
     })),
+    accountsShow: on.has('accounts') ? config.accountsShow : [],
     stats: on.has('stats')
       ? { days: config.statsDays, items: config.statsShow.map(key => ({ key, label: PAGE_STAT_LABELS[key], n: statValue[key].n, text: statValue[key].text, signed: statValue[key].signed === true })) }
       : null,
@@ -298,3 +306,30 @@ export async function setDraftSeriesCover(row: PageRow, seriesId: number, key: s
 }
 /** 這把 key 是不是這個會員上傳的（key 的開頭帶著會員 id） */
 export const ownsPageImage = (ownerId: number, key: string) => key.startsWith(`pages/${ownerId}/`)
+
+/**
+ * 發布時把精選貼文的成效向平台重抓一次（舊貼文排程輪不到，掛在公開頁面上的數字會是舊的，甚至是 0）。
+ * 最多 6 則、各打一次平台，全部放在這一個請求裡；抓不到的那幾則維持原本的數字，回傳沒抓到的則數，不讓發布失敗。
+ */
+export async function refreshFeaturedMetrics(uid: number, config: PageConfig) {
+  const ids = config.blocks.some(b => b.type === 'posts' && b.on) ? config.postIds.slice(0, PAGE_LIMITS.posts) : []
+  if (!ids.length) return 0
+  const db = useDb()
+  const rows = await db.select({
+    id: accountPosts.id, externalId: accountPosts.externalId, platform: accounts.platform, tokenEnc: connections.tokenEnc,
+  }).from(accountPosts).innerJoin(accounts, eq(accounts.id, accountPosts.accountId)).innerJoin(connections, eq(connections.accountId, accounts.id))
+    .where(and(eq(accounts.ownerId, uid), inIdList(accountPosts.id, ids)))
+  const now = nowIso()
+  const results = await Promise.allSettled(rows.map(async (row) => {
+    if (!isLinkedPlatform(row.platform)) throw new Error('不支援的平台')
+    const m = await fetchMetrics(row.platform, await unseal(row.tokenEnc), row.externalId)
+    // 跟單則同步一樣：觀看數讀不到時只更新按讚與留言，不把原本的觀看、分享、收藏蓋成 0
+    // 包一層再回傳：查詢建構器本身是 thenable，直接從 async 函式回傳會被當場執行，就放不進後面的 batch 了
+    return { write: db.update(accountPosts).set({ ...(m.views > 0 ? m : { likes: m.likes, comments: m.comments }), insightsAt: now }).where(eq(accountPosts.id, row.id)) }
+  }))
+  const updates = results.flatMap(r => (r.status === 'fulfilled' ? [r.value.write] : []))
+  const done = rows.filter((_, i) => results[i]!.status === 'fulfilled').map(r => r.id)
+  // 今天的數字順便記一筆（post_stats），排在更新之後
+  if (updates.length) await batchWrites([...updates, snapshotPostStats(inIdList(accountPosts.id, done))])
+  return ids.length - done.length
+}
