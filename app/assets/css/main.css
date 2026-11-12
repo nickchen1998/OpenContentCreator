@@ -168,7 +168,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 
 /* ---- 表單 ---- */
 label.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; min-width: 0; }
-input[type=text], input[type=password], input[type=url], input[type=number], input[type=date], input[type=time], select, textarea {
+input[type=text], input[type=search], input[type=password], input[type=url], input[type=number], input[type=date], input[type=time], select, textarea {
   width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: var(--radius-field); padding: 10px 14px; background: #fff; font-size: 16px; font-weight: 400;
 }
 input:focus, textarea:focus, select:focus { outline: 2px solid rgba(62, 83, 70, 0.35); outline-offset: 1px; }
@@ -227,6 +227,14 @@ dialog > form { max-height: calc(100vh - 32px); overflow-y: auto; }
 .stat-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 .tag-x { border: 0; background: none; padding: 0 2px; margin-right: -4px; min-width: 24px; min-height: 24px; font-size: 16px; line-height: 1; color: var(--muted); cursor: pointer; }
 .tag-x:hover { color: var(--ink); }
+/* 清單上方的搜尋框 */
+input.search { width: min(260px, 100%); border-radius: var(--radius-pill); padding-left: 16px; }
+/* 設定旁的說明：平常只有一個小 i，滑鼠移上去或聚焦才出現 */
+.info-tip { position: relative; display: inline-flex; }
+.info-tip-btn { width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--line-strong); background: #fff; color: var(--muted); font-size: 13px; font-weight: 700; font-style: italic; line-height: 1; cursor: help; }
+.info-tip-btn:hover, .info-tip-btn:focus-visible { border-color: var(--green-deep); color: var(--green-deep); }
+.info-tip-body { position: absolute; z-index: 5; top: calc(100% + 8px); left: -8px; width: max-content; max-width: min(320px, 70vw); padding: 10px 14px; border-radius: 12px; background: var(--ink); color: #fff; font-size: 14px; line-height: 1.55; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); visibility: hidden; opacity: 0; transition: opacity 0.12s ease; pointer-events: none; }
+.info-tip:hover .info-tip-body, .info-tip-btn:focus + .info-tip-body { visibility: visible; opacity: 1; }
 
 /* 系列文頁面：左邊圖表、右邊留言紀錄（區塊內捲動） */
 .chart-title { font-size: 14px; font-weight: 700; color: var(--ink-2); }

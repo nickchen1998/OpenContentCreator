@@ -58,7 +58,6 @@ export function normalizePageConfig(input: unknown): PageConfig {
     seriesIds: ids(body.seriesIds, PAGE_LIMITS.series),
     statsDays: PAGE_STAT_DAYS.includes(body.statsDays as 28) ? body.statsDays as number : 28,
     statsShow: legacy ? ['views', 'rate', 'posts'] : PAGE_STATS.filter(k => (body.statsShow as unknown[]).includes(k)),
-    postsAuto: body.postsAuto === true,
     postsEmbed: body.postsEmbed === true,
     collabItems: list(body.collabItems, PAGE_LIMITS.collabItems, 20),
     collabBrands: list(body.collabBrands, PAGE_LIMITS.collabBrands, 30),
@@ -157,7 +156,7 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
       .where(postsOn && config.postIds.length ? and(eq(accounts.ownerId, ownerId), inIdList(accountPosts.id, config.postIds)) : sql`0`),
     // 自動補上的：近 90 天觀看最高的。多抓幾則，扣掉已經置頂的還夠用
     db.select(postColumns).from(accountPosts).innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
-      .where(postsOn && config.postsAuto ? and(eq(accounts.ownerId, ownerId), gte(accountPosts.publishedAt, autoSince)) : sql`0`)
+      .where(postsOn ? and(eq(accounts.ownerId, ownerId), gte(accountPosts.publishedAt, autoSince)) : sql`0`)
       .orderBy(desc(accountPosts.views), desc(accountPosts.id)).limit(PAGE_LIMITS.posts * 2),
     db.select({
       id: collections.id, name: collections.name, posts: sql<number>`count(${accountPosts.id})`, views: sql<number>`coalesce(sum(${accountPosts.views}), 0)`,
@@ -205,14 +204,12 @@ export async function buildPageView(ownerId: number, config: PageConfig, images:
     posts: { n: total.posts, text: '' },
   }
 
-  // ---- 精選貼文：自己挑的排前面，不足的自動補；前幾則能嵌入的用嵌入框 ----
+  // ---- 精選貼文：自己挑的排前面，不足的自動補；啟用嵌入時能嵌入的都用平台的嵌入框 ----
   const pinned = config.postIds.map(id => postRows.find(p => p.id === id)).filter((p): p is typeof postRows[number] => Boolean(p))
   const picked = [...pinned, ...autoRows.filter(p => !pinned.some(x => x.id === p.id))].filter(p => isPlatform(p.platform)).slice(0, PAGE_LIMITS.posts)
-  let embeds = 0
   const posts = !postsOn ? [] : picked.map((p) => {
     const platform = p.platform as Platform
-    const embed = config.postsEmbed && embeds < PAGE_LIMITS.embeds ? embedOf(platform, p.url, p.externalId) : null
-    if (embed) embeds++
+    const embed = config.postsEmbed ? embedOf(platform, p.url, p.externalId) : null
     return { platform, text: p.text, url: safeUrl(p.url), views: p.views, rate: rateOf(p.engagement, p.views), day: dayOf(p.publishedAt), embed }
   })
 

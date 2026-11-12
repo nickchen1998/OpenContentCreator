@@ -117,7 +117,7 @@ const noteOf = (type: PageBlock) => {
   if (type === 'accounts') return '粉絲、平均觀看、互動率、成長'
   if (type === 'stats') return `近 ${d.statsDays} 天・${d.statsShow.map(k => PAGE_STAT_LABELS[k]).join('、') || '還沒選'}`
   if (type === 'collab') return [d.collabItems.length ? `${d.collabItems.length} 個項目` : '', d.collabBrands.length ? `${d.collabBrands.length} 個品牌` : '', d.contactEmail].filter(Boolean).join('・') || '還沒填'
-  if (type === 'posts') return [d.postIds.length ? `置頂 ${d.postIds.length} 則` : '', d.postsAuto ? '自動補上' : '', d.postsEmbed ? '嵌入' : ''].filter(Boolean).join('・') || '還沒選'
+  if (type === 'posts') return [d.postIds.length ? `置頂 ${d.postIds.length} 則` : '', d.postsEmbed ? '嵌入' : ''].filter(Boolean).join('・') || '自動帶入觀看最高的'
   if (type === 'series') return d.seriesIds.length ? `已選 ${d.seriesIds.length} 個` : '還沒選'
   if (type === 'text') return d.textTitle || d.textBody.slice(0, 20) || '還沒填'
   return d.links.length ? `${d.links.length} 顆` : '還沒加'
@@ -129,7 +129,7 @@ const editing = ref<PageBlock>()
 const dialogOpen = ref(false)
 const form = reactive({
   name: '', tagline: '', bio: '', postIds: [] as number[], seriesIds: [] as number[], textTitle: '', textBody: '', links: [] as { label: string, url: string }[],
-  statsDays: 28, statsShow: [] as PageStat[], postsAuto: false, postsEmbed: false,
+  statsDays: 28, statsShow: [] as PageStat[], postsEmbed: false,
   collabItems: [] as string[], collabBrands: [] as string[], contactEmail: '', contactLabel: '',
   seriesLayout: 'h' as 'h' | 'v', seriesTop: false, seriesText: {} as Record<string, string>,
 })
@@ -142,15 +142,19 @@ function addTag(key: 'collabItems' | 'collabBrands') {
   adding[key] = ''
 }
 const dialogError = ref('')
+// 挑精選貼文時的搜尋：已經勾的不會因為被篩掉而取消
+const postQuery = ref('')
+const foundCandidates = computed(() => candidates.value.filter(p => keywordMatcher(postQuery.value)(p.text)))
 function edit(type: PageBlock) {
   const d = draft.value
   Object.assign(form, {
     name: d.name, tagline: d.tagline, bio: d.bio, postIds: [...d.postIds], seriesIds: [...d.seriesIds], textTitle: d.textTitle, textBody: d.textBody, links: d.links.map(l => ({ ...l })),
-    statsDays: d.statsDays, statsShow: [...d.statsShow], postsAuto: d.postsAuto, postsEmbed: d.postsEmbed,
+    statsDays: d.statsDays, statsShow: [...d.statsShow], postsEmbed: d.postsEmbed,
     collabItems: [...d.collabItems], collabBrands: [...d.collabBrands], contactEmail: d.contactEmail, contactLabel: d.contactLabel,
     seriesLayout: d.seriesLayout, seriesTop: d.seriesTop, seriesText: { ...d.seriesText },
   })
   Object.assign(adding, { collabItems: '', collabBrands: '' })
+  postQuery.value = ''
   if (type === 'links' && !form.links.length) form.links.push({ label: '', url: '' })
   editing.value = type
   dialogError.value = ''
@@ -186,7 +190,7 @@ function applyEdit() {
   }
   if (type === 'profile') Object.assign(d, { name: form.name, tagline: form.tagline, bio: form.bio })
   if (type === 'stats') Object.assign(d, { statsDays: form.statsDays, statsShow: PAGE_STATS.filter(k => form.statsShow.includes(k)) })
-  if (type === 'posts') Object.assign(d, { postIds: [...form.postIds], postsAuto: form.postsAuto, postsEmbed: form.postsEmbed })
+  if (type === 'posts') Object.assign(d, { postIds: [...form.postIds], postsEmbed: form.postsEmbed })
   if (type === 'series') Object.assign(d, { seriesIds: [...form.seriesIds], seriesLayout: form.seriesLayout, seriesTop: form.seriesTop, seriesText: { ...form.seriesText } })
   if (type === 'text') Object.assign(d, { textTitle: form.textTitle, textBody: form.textBody })
   dialogOpen.value = false
@@ -334,20 +338,23 @@ const dayOf = (iso: string) => fmtDay(minutesToAt(Math.floor(Date.parse(iso) / 6
         </div>
       </template>
       <template v-else-if="editing === 'posts'">
-        <div class="row" style="gap: 6px 20px">
-          <label class="check"><input v-model="form.postsAuto" type="checkbox">不足 {{ PAGE_LIMITS.posts }} 則時自動補上觀看最高的</label>
-          <label class="check"><input v-model="form.postsEmbed" type="checkbox">前 {{ PAGE_LIMITS.embeds }} 則嵌入平台的貼文</label>
+        <div class="row" style="gap: 8px">
+          <label class="check"><input v-model="form.postsEmbed" type="checkbox">啟用嵌入</label>
+          <InfoTip text="啟用後會改為將平台呈現的貼文直接嵌入，圖片與影片會一起顯示。" />
         </div>
-        <span class="small muted">置頂 {{ form.postIds.length }}／{{ PAGE_LIMITS.posts }} 則</span>
+        <div class="row between">
+          <span class="small muted">置頂 {{ form.postIds.length }}／{{ PAGE_LIMITS.posts }} 則</span>
+          <input v-model="postQuery" type="search" class="search" aria-label="搜尋貼文" placeholder="搜尋貼文" @keydown.enter.prevent>
+        </div>
         <div class="post-list" tabindex="0" aria-label="可以選的貼文">
-          <label v-for="p in candidates" :key="p.id" class="post-option">
+          <label v-for="p in foundCandidates" :key="p.id" class="post-option">
             <input v-model="form.postIds" type="checkbox" :value="p.id" :disabled="!form.postIds.includes(p.id) && form.postIds.length >= PAGE_LIMITS.posts">
             <span class="col grow" style="gap: 2px">
               <span class="wrap-any">{{ p.text || '（沒有文字的貼文）' }}</span>
               <span class="small muted pf-row" style="gap: 6px"><PlatformIcon :platform="account(p.accountId)?.platform" :size="14" />{{ dayOf(p.publishedAt) }} · 觀看 {{ fmtNum(p.views) }}</span>
             </span>
           </label>
-          <div v-if="!candidates.length" class="empty">還沒有貼文</div>
+          <div v-if="!foundCandidates.length" class="empty">{{ candidates.length ? '找不到符合的貼文' : '還沒有貼文' }}</div>
         </div>
       </template>
       <template v-else-if="editing === 'series'">

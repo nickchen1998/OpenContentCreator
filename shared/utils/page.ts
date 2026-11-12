@@ -10,7 +10,7 @@ export const PAGE_THEMES = ['night', 'forest', 'sunset'] as const
 export type PageTheme = typeof PAGE_THEMES[number]
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,31}$/
 export const COLOR_RE = /^#[0-9a-fA-F]{6}$/
-export const PAGE_LIMITS = { posts: 6, series: 6, links: 6, embeds: 3, collabItems: 8, collabBrands: 12, seriesTop: 3 }
+export const PAGE_LIMITS = { posts: 6, series: 6, links: 6, collabItems: 8, collabBrands: 12, seriesTop: 3 }
 /** 成效數字可以選的項目（畫面上的順序就是這個順序） */
 export const PAGE_STATS = ['followers', 'avgViews', 'rate', 'growth', 'views', 'posts'] as const
 export type PageStat = typeof PAGE_STATS[number]
@@ -39,8 +39,7 @@ export interface PageConfig {
   /** 成效數字：算幾天、顯示哪幾個 */
   statsDays: number
   statsShow: PageStat[]
-  /** 精選貼文：自己挑的不足上限時自動補上近期觀看最高的；能嵌入的用平台的嵌入框呈現 */
-  postsAuto: boolean
+  /** 精選貼文：能嵌入的用平台的嵌入框呈現（自己挑的不足上限時一律自動補上近期觀看最高的，沒有開關） */
   postsEmbed: boolean
   /** 合作：接什麼案、合作過誰、怎麼聯絡 */
   collabItems: string[]
@@ -65,7 +64,7 @@ export const defaultPageConfig = (name = ''): PageConfig => ({
   name, tagline: '', bio: '', theme: 'night', accent: '', bg: '',
   blocks: PAGE_BLOCKS.map(type => ({ type, on: type === 'profile' || type === 'accounts' || type === 'stats' })),
   postIds: [], seriesIds: [], textTitle: '', textBody: '', links: [], shareTitle: '', shareText: '',
-  statsDays: 28, statsShow: ['followers', 'avgViews', 'rate', 'growth'], postsAuto: true, postsEmbed: true,
+  statsDays: 28, statsShow: ['followers', 'avgViews', 'rate', 'growth'], postsEmbed: true,
   collabItems: [], collabBrands: [], contactEmail: '', contactLabel: '',
   seriesLayout: 'h', seriesTop: true, seriesText: {}, seriesCovers: {},
 })
