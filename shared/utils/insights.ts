@@ -13,6 +13,8 @@ export interface InsightPost {
   saves: number
   /** 這則貼文所屬的系列文（儀表板的貼文才有這一欄） */
   seriesId?: number | null
+  /** 所屬系列文的名稱（儀表板的貼文才有這一欄） */
+  seriesName?: string | null
 }
 
 export const engagementOf = (t: { likes: number, comments: number, shares: number }) => t.likes + t.comments + t.shares

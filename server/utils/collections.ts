@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { accountPosts, accounts, collectionPosts, collections, comments } from '../database/schema'
 
 const postColumns = {
@@ -103,14 +103,3 @@ export function loadSeriesComments(seriesId: number) {
   return useDb().select().from(comments).where(eq(comments.collectionId, seriesId)).orderBy(desc(comments.createdAt), desc(comments.id)).limit(600)
 }
 
-/** 儀表板用：期間內自動回覆與私訊送出的次數 */
-export async function replyTotals(uid: number, days: number, platform?: Platform) {
-  const since = new Date(Date.now() - days * 86400_000).toISOString()
-  const [row] = await useDb().select({
-    replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
-    dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
-    // 有試著送私訊的（包含失敗的），用來算送達率
-    dmTried: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' then 1 else 0 end)`,
-  }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(and(eq(accounts.ownerId, uid), gte(comments.createdAt, since), platform ? eq(accounts.platform, platform) : undefined))
-  return { replied: row?.replied ?? 0, dms: row?.dms ?? 0, dmTried: row?.dmTried ?? 0 }
-}

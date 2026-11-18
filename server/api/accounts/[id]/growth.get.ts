@@ -1,4 +1,4 @@
-// 粉絲成長：每成長 step 個粉絲花了幾天、期間發了哪些貼文（儀表板點帳號開的視窗）
+// 粉絲成長：每成長 step 個粉絲花了幾天、期間發了哪些貼文（儀表板右邊的「粉絲成長」）
 export default defineEventHandler(async (event) => {
   const accountId = idParam(event)
   await ownedAccount(uidOf(event), accountId)
