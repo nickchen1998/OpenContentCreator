@@ -14,7 +14,7 @@ const rate = (eng: number, views: number) => (views ? `${(eng / views * 100).toF
 const cards = computed(() => series.value.map((s) => {
   const totals = totalsOf(s.posts)
   const platforms = [...new Set(s.posts.map(p => account(p.accountId)?.platform).filter(Boolean))] as Platform[]
-  return { ...s, totals, platforms }
+  return { ...s, totals, platforms, shares: s.posts.reduce((a, p) => a + p.shares, 0) }
 }))
 </script>
 
@@ -44,8 +44,8 @@ const cards = computed(() => series.value.map((s) => {
       <dl class="series-card-foot">
         <div><dt>貼文</dt><dd>{{ s.posts.length }}</dd></div>
         <div><dt>留言</dt><dd>{{ fmtNum(s.received) }}</dd></div>
-        <div><dt>已回覆</dt><dd>{{ fmtNum(s.replied) }}</dd></div>
-        <div><dt>私訊</dt><dd>{{ fmtNum(s.dms) }}</dd></div>
+        <div><dt>分享</dt><dd>{{ fmtNum(s.shares) }}</dd></div>
+        <div><dt>收藏</dt><dd>{{ fmtNum(s.totals.saves) }}</dd></div>
       </dl>
     </NuxtLink>
   </div>
