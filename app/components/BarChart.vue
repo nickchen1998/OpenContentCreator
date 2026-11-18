@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Chart.js 的長條圖：單一數列或堆疊，橫向或直向。只註冊用得到的部分，打包才不會把整個 Chart.js 帶進來
 import { BarController, BarElement, CategoryScale, Chart, Legend, LinearScale, Tooltip } from 'chart.js'
+import type { Plugin } from 'chart.js'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -16,6 +17,8 @@ const props = defineProps<{
   height?: number
   /** 填滿外層容器的高度（外層要有明確高度或是 flex 子項） */
   fill?: boolean
+  /** 每個類別前面畫的平台商標（跟 labels 對齊；只支援橫向）。標籤文字就不用再寫平台名稱 */
+  icons?: (Platform | undefined)[]
 }>()
 
 const canvas = ref<HTMLCanvasElement>()
@@ -24,6 +27,40 @@ const INK = '#2e362f'
 const MUTED = '#68736a'
 const GRID = '#eceee6'
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif'
+const ICON = 14
+const ICON_GAP = 5
+
+// 類別軸的標籤前面畫平台商標：圖表左邊留一個圖示的寬度，畫完標籤後再把圖示畫在文字左邊
+const iconPaths = new Map<Platform, Path2D>()
+const iconPath = (p: Platform) => {
+  let path = iconPaths.get(p)
+  if (!path) iconPaths.set(p, path = new Path2D(PLATFORM_ICONS[p].path))
+  return path
+}
+const platformIconsPlugin = (axis: 'x' | 'y'): Plugin<'bar'> => ({
+  id: 'platformIcons',
+  afterDraw(c) {
+    const scale = c.scales[axis]
+    if (!scale || !props.icons) return
+    const { ctx } = c
+    ctx.save()
+    scale.getLabelItems().forEach((item, i) => {
+      const platform = props.icons![scale.ticks[i]?.value ?? i]
+      if (!platform) return
+      ctx.font = item.font.string
+      const width = ctx.measureText(String(item.label)).width
+      const [x, y] = item.options.translation ?? [0, 0]
+      const left = (item.options.textAlign === 'left' ? x : x - width) - ICON_GAP - ICON
+      ctx.save()
+      ctx.translate(left, y - ICON / 2)
+      ctx.scale(ICON / 24, ICON / 24)
+      ctx.fillStyle = PLATFORM_ICONS[platform].color
+      ctx.fill(iconPath(platform))
+      ctx.restore()
+    })
+    ctx.restore()
+  },
+})
 
 function build() {
   if (!canvas.value) return
@@ -31,6 +68,7 @@ function build() {
   const valueAxis = props.horizontal ? 'x' : 'y'
   const categoryAxis = props.horizontal ? 'y' : 'x'
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const withIcons = props.horizontal && !!props.icons?.some(Boolean)
   chart = new Chart(canvas.value, {
     type: 'bar',
     data: {
@@ -52,7 +90,7 @@ function build() {
       responsive: true,
       maintainAspectRatio: false,
       animation: reduced ? false : { duration: 300 },
-      layout: { padding: { right: props.valueLabels && props.horizontal ? 56 : 4, top: props.valueLabels && !props.horizontal ? 18 : 0 } },
+      layout: { padding: { left: withIcons ? ICON + ICON_GAP : 0, right: props.valueLabels && props.horizontal ? 56 : 4, top: props.valueLabels && !props.horizontal ? 18 : 0 } },
       scales: {
         [valueAxis]: {
           stacked: props.stacked, beginAtZero: true,
@@ -62,7 +100,8 @@ function build() {
         [categoryAxis]: {
           stacked: props.stacked,
           grid: { display: false }, border: { color: GRID },
-          ticks: { color: INK, font: { family: FONT, size: 13 }, autoSkip: !props.horizontal, maxRotation: 0 },
+          // 橫向時標籤靠左對齊（從軸的左緣開始寫），商標畫在左邊留白的位置
+          ticks: { color: INK, font: { family: FONT, size: 13 }, autoSkip: !props.horizontal, maxRotation: 0, crossAlign: props.horizontal ? 'far' : 'near' },
         },
       },
       plugins: {
@@ -72,11 +111,20 @@ function build() {
         },
         tooltip: {
           backgroundColor: INK, titleFont: { family: FONT, size: 13 }, bodyFont: { family: FONT, size: 13 }, padding: 10, cornerRadius: 8, displayColors: props.datasets.length > 1,
-          callbacks: { label: ctx => ` ${ctx.dataset.label}：${Number(ctx.parsed[valueAxis as 'x' | 'y']).toLocaleString('en-US')}` },
+          callbacks: {
+            // 圖示在提示框裡畫不出來，標題改寫平台名稱
+            title: items => items.map((item) => {
+              const platform = withIcons ? props.icons![item.dataIndex] : undefined
+              return platform ? `${PLATFORMS[platform].label} ${item.label}` : item.label
+            }),
+            label: ctx => ` ${ctx.dataset.label}：${Number(ctx.parsed[valueAxis as 'x' | 'y']).toLocaleString('en-US')}`,
+          },
         },
       },
     },
-    plugins: props.valueLabels
+    plugins: [
+      ...(withIcons ? [platformIconsPlugin(categoryAxis)] : []),
+      ...(props.valueLabels
       ? [{
           id: 'valueLabels',
           afterDatasetsDraw(c) {
@@ -102,13 +150,14 @@ function build() {
             })
             ctx.restore()
           },
-        }]
-      : [],
+        } satisfies Plugin<'bar'>]
+      : []),
+    ],
   })
 }
 
 onMounted(build)
-watch(() => [props.labels, props.datasets], build, { deep: true })
+watch(() => [props.labels, props.datasets, props.icons], build, { deep: true })
 onBeforeUnmount(() => chart?.destroy())
 </script>
 

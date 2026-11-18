@@ -44,18 +44,20 @@ const PARTS = [
   { key: 'shares', label: '分享', color: '#6250d6' },
   { key: 'saves', label: '收藏', color: '#eda100' },
 ] as const
-// 每則貼文的名稱：平台縮寫＋日期＋開頭幾個字。同一天同平台發好幾則時，光靠平台和日期分不出來
+// 每則貼文的名稱：日期＋開頭幾個字（平台用商標另外畫）。同一天同平台發好幾則時，光靠平台和日期分不出來
+const platformOf = (p: InsightPost) => account(p.accountId)?.platform
 const labelOf = (p: InsightPost) => {
-  const platform = account(p.accountId)?.platform
   const head = p.text.replace(/\s+/g, ' ').trim()
-  return `${platform ? PLATFORMS[platform].short : ''} ${dayOf(p.publishedAt)}${head ? ` ${head.length > 7 ? `${head.slice(0, 7)}…` : head}` : ''}`.trim()
+  return `${dayOf(p.publishedAt)}${head ? ` ${head.length > 7 ? `${head.slice(0, 7)}…` : head}` : ''}`
 }
+// 給螢幕閱讀器的摘要用：平台名稱＋名稱
+const spokenLabel = (r: { label: string, platform?: Platform }) => r.platform ? `${PLATFORMS[r.platform].label} ${r.label}` : r.label
 const postLabels = computed(() => (series.value?.posts ?? []).map(labelOf))
 // 圖表最多畫 CHART_ROWS 條：貼文更多時只畫觀看最高的幾則，其餘合併成一條「其他」（每一則的數字在資料表）
 const CHART_ROWS = 8
 const chartRows = computed(() => {
   const list = [...(series.value?.posts ?? [])].sort((a, b) => b.views - a.views || engagementOf(b) - engagementOf(a))
-  const rows = list.map(p => ({ label: labelOf(p), views: p.views, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves }))
+  const rows: { label: string, platform?: Platform, views: number, likes: number, comments: number, shares: number, saves: number }[] = list.map(p => ({ label: labelOf(p), platform: platformOf(p), views: p.views, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves }))
   if (rows.length <= CHART_ROWS) return { rows, top: 0 }
   const top = rows.slice(0, CHART_ROWS - 1)
   const rest = rows.slice(CHART_ROWS - 1)
@@ -63,6 +65,7 @@ const chartRows = computed(() => {
   return { rows: [...top, { label: `其他 ${rest.length} 則`, views: sum('views'), likes: sum('likes'), comments: sum('comments'), shares: sum('shares'), saves: sum('saves') }], top: top.length }
 })
 const chartLabels = computed(() => chartRows.value.rows.map(r => r.label))
+const chartIcons = computed(() => chartRows.value.rows.map(r => r.platform))
 const viewsData = computed(() => [{ label: '觀看', data: chartRows.value.rows.map(r => r.views), color: SERIES_GREEN }])
 const partsData = computed(() => PARTS.map(part => ({ label: part.label, data: chartRows.value.rows.map(r => r[part.key]), color: part.color })))
 // 橫條圖的高度跟著條數走（最多 CHART_ROWS 條，所以不會把頁面撐長）
@@ -156,8 +159,8 @@ async function copySummary() {
   if (await attempt(() => navigator.clipboard.writeText(lines.join('\n')))) notify('已複製')
 }
 
-const viewsSummary = computed(() => `各貼文觀看：${chartRows.value.rows.map(r => `${r.label} ${r.views}`).join('、')}`)
-const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.rows.map(r => `${r.label} 按讚 ${r.likes}、留言 ${r.comments}、分享 ${r.shares}、收藏 ${r.saves}`).join('；')}`)
+const viewsSummary = computed(() => `各貼文觀看：${chartRows.value.rows.map(r => `${spokenLabel(r)} ${r.views}`).join('、')}`)
+const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.rows.map(r => `${spokenLabel(r)} 按讚 ${r.likes}、留言 ${r.comments}、分享 ${r.shares}、收藏 ${r.saves}`).join('；')}`)
 
 </script>
 
@@ -221,11 +224,11 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
         <div v-else-if="view === 'chart'" class="charts fill scroll">
           <div class="col" style="gap: 4px">
             <h3 class="chart-title">各貼文觀看<span v-if="chartRows.top" class="small muted" style="font-weight: 400">　觀看最高的 {{ chartRows.top }} 則</span></h3>
-            <BarChart horizontal value-labels :labels="chartLabels" :datasets="viewsData" :height="rowsHeight" :summary="viewsSummary" />
+            <BarChart horizontal value-labels :labels="chartLabels" :icons="chartIcons" :datasets="viewsData" :height="rowsHeight" :summary="viewsSummary" />
           </div>
           <div class="col" style="gap: 4px">
             <h3 class="chart-title">互動組成</h3>
-            <BarChart horizontal stacked :labels="chartLabels" :datasets="partsData" :height="rowsHeight + 34" :summary="partsSummary" />
+            <BarChart horizontal stacked :labels="chartLabels" :icons="chartIcons" :datasets="partsData" :height="rowsHeight + 34" :summary="partsSummary" />
           </div>
           <div class="chart-fill">
             <h3 class="chart-title">每日留言與私訊<span class="small muted" style="font-weight: 400">　近 14 天</span></h3>
@@ -239,7 +242,7 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
             </thead>
             <tbody>
               <tr v-for="(p, i) in series.posts" :key="p.id">
-                <th scope="row">{{ postLabels[i] }}
+                <th scope="row"><span class="pf-row" style="gap: 6px"><PlatformIcon :platform="platformOf(p)" />{{ postLabels[i] }}</span>
                   <div class="small" style="font-weight: 400"><a :href="p.url" target="_blank" rel="noopener noreferrer" style="color: var(--muted)">{{ p.text || '（沒有文字的貼文）' }}</a></div>
                 </th>
                 <td style="white-space: nowrap">{{ dayOf(p.publishedAt) }}</td>
