@@ -324,6 +324,9 @@ table.compact .bar-track { min-width: 70px; }
 .conv-card:hover { border-color: var(--green-deep); background: var(--green-faint); }
 .conv-first { font-size: 15.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .conv-context { margin: 0; padding: 8px 12px; border-radius: var(--radius-field); background: var(--green-faint); font-size: 14.5px; color: var(--ink-2); max-height: 4.6em; overflow-y: auto; flex: none; }
+/* 對話細節的「貼文內容」視窗：平台的嵌入框，跟公開頁面一樣固定高度 480（矮螢幕再縮） */
+.post-embed { width: min(400px, 100%); margin: 0 auto; border-radius: var(--radius-field); overflow: hidden; border: 1px solid var(--line); }
+.post-embed iframe { display: block; width: 100%; height: min(480px, calc(100vh - 240px)); border: 0; background: #ffffff; }
 .conv-line { list-style: none; margin: 0; padding: 0 4px 0 0; }
 .conv-line li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 0 0 16px 26px; }
 .conv-line li::before { content: ''; position: absolute; left: 2px; top: 6px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; background: #fff; border: 2px solid var(--line-strong); }

@@ -77,6 +77,17 @@ const contextOf = computed(() => {
   return conv.part ? parts.value[conv.part - 1]?.text ?? '' : conv.root.postTitle
 })
 
+// 「貼文內容」：在視窗裡用平台的嵌入框顯示原始貼文（跟公開頁面一樣只放 iframe，不載入平台的腳本）；嵌不了就顯示文字與連結
+const postOpen = ref(false)
+const postView = ref<{ url: string, text: string, embed: PageEmbed | null } | null>(null)
+async function showPost() {
+  const conv = current.value
+  if (!conv) return
+  postView.value = null
+  postOpen.value = true
+  postView.value = await api<{ url: string, text: string, embed: PageEmbed | null }>('/api/feed/embed', { query: { accountId: conv.root.accountId, externalPostId: conv.root.externalPostId } })
+    .catch(() => ({ url: '', text: contextOf.value, embed: null }))
+}
 const waitingCount = computed(() => grouped.value.conversations.filter(c => c.waiting).length)
 
 function open(key: string) {
@@ -155,7 +166,6 @@ async function dismiss() {
       <span class="small muted"><template v-if="parts.length">回在{{ whereOf(current.part) }} · </template>還有 {{ waitingCount }} 串待回覆</span>
     </div>
     <h3 class="pf-row" style="gap: 6px"><PlatformIcon v-if="showPlatform" :platform="account(current.root.accountId)?.platform" :size="16" />{{ current.root.author }}</h3>
-    <p v-if="contextOf" class="conv-context wrap-any">{{ contextOf }}</p>
     <ol class="conv-line fill scroll" tabindex="0" aria-label="對話內容">
       <li v-for="m in messages" :key="m.key" :class="{ mine: m.mine }">
         <span class="row small muted" style="gap: 4px 10px">
@@ -176,13 +186,28 @@ async function dismiss() {
       </li>
     </ol>
     <form v-if="replyTo" class="col shrink" style="gap: 8px" @submit.prevent="reply">
-      <label class="field">回覆 {{ replyTo.author }}
-        <textarea v-model="draft" rows="2" maxlength="500" required style="resize: none" />
-      </label>
+      <textarea v-model="draft" rows="2" maxlength="500" required style="resize: none" :placeholder="`回覆 ${replyTo.author}`" :aria-label="`回覆 ${replyTo.author}`" />
       <div class="row" style="justify-content: flex-end">
         <button v-if="current.waiting" type="button" class="btn" :disabled="busy" @click="dismiss">不用回</button>
+        <button type="button" class="btn" @click="showPost">貼文內容</button>
         <button type="submit" class="btn primary" :disabled="busy || !draft.trim()">{{ busy ? '送出中…' : '送出' }}</button>
       </div>
     </form>
+    <AppDialog v-model="postOpen" title="貼文內容" submit-label="" cancel-label="關閉">
+      <div v-if="!postView" class="muted">讀取中…</div>
+      <div v-else-if="postView.embed" class="post-embed">
+        <iframe
+          :src="postView.embed.src" :title="`${PLATFORMS[postView.embed.platform].label} 貼文`"
+          referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
+        />
+      </div>
+      <template v-else>
+        <p class="conv-context wrap-any">{{ postView.text || contextOf || '（沒有文字的貼文）' }}</p>
+      </template>
+      <template v-if="postView?.url" #actions>
+        <a :href="postView.url" target="_blank" rel="noopener noreferrer" class="btn">到平台上看</a>
+      </template>
+    </AppDialog>
   </div>
 </template>

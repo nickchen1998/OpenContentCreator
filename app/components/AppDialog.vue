@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 原生 <dialog>：有 focus trap、Esc 關閉。v-model 控制開關，submit 事件交給外面存檔
 const open = defineModel<boolean>({ required: true })
-defineProps<{ title: string, submitLabel?: string, error?: string, busy?: boolean, wide?: boolean }>()
+defineProps<{ title: string, submitLabel?: string, cancelLabel?: string, error?: string, busy?: boolean, wide?: boolean }>()
 defineEmits<{ submit: [] }>()
 const el = ref<HTMLDialogElement>()
 watch(open, (value) => {
@@ -18,7 +18,7 @@ watch(open, (value) => {
       <div v-if="error" class="error" role="alert">{{ error }}</div>
       <div class="row" style="justify-content: flex-end">
         <slot name="actions" />
-        <button type="button" class="btn" @click="open = false">取消</button>
+        <button type="button" class="btn" @click="open = false">{{ cancelLabel ?? '取消' }}</button>
         <button v-if="submitLabel !== ''" type="submit" class="btn primary" :disabled="busy">{{ submitLabel ?? '儲存' }}</button>
       </div>
     </form>
