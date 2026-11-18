@@ -11,7 +11,8 @@
 
 ## 部署與資料的規則
 
-- 作者自己的站是 Cloudflare Worker `opencontentcreator`（網域與資料庫 id 在 `wrangler.jsonc`；自己架設的人要換成自己的，README 有寫），以下稱「正式環境」。
+- 作者自己的站是 Cloudflare Worker `opencontentcreator`（網域在 `wrangler.jsonc`；自己架設的人要換成自己的，README 有寫）。
+  `wrangler.jsonc` **不寫 `database_id`**（不公開），wrangler 用 `database_name` 找資料庫；不要加回去，以下稱「正式環境」。
   `wrangler deploy`、`wrangler d1 migrations apply DB --remote`、改 secret 都等於動正式環境，**先問使用者**。
 - **不要把任何金鑰寫進會 commit 的檔案，測試用的也不行。** 正式的值在 `wrangler secret`，
   本機副本在被 gitignore 的 `.env.production`。

@@ -8,11 +8,11 @@
   "observability": { "enabled": true },
   // 每 5 分鐘輪詢 Threads 回覆；每 30 分鐘同步成效、換新 token（server/plugins/scheduled.ts）
   "triggers": { "crons": ["*/5 * * * *", "11,41 * * * *"] },
+  // 不寫 database_id：wrangler 用 database_name 找到帳號裡同名的 D1（deploy 沿用已綁定的那個，--remote 指令向 API 查 id）
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "opencontentcreator",
-      "database_id": "REMOVED",
       "migrations_dir": "server/database/migrations"
     }
   ],

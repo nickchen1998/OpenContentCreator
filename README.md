@@ -88,11 +88,12 @@ Nuxt 4（`ssr: false` 的 SPA）+ Nitro `cloudflare_module`，整個跑在一個
 
 ## 自己架設
 
-需要 Cloudflare 帳號、Node.js 與 pnpm。`wrangler.jsonc` 裡的網域、資料庫 id 與儲存桶名稱是作者自己的，**要先換成你的**。
+需要 Cloudflare 帳號、Node.js 與 pnpm。`wrangler.jsonc` 裡的網域是作者自己的，**要先換成你的**。
+資料庫不用填 id：wrangler 會用 `database_name` 找到你帳號裡同名的 D1；名稱不一樣的話，改 `database_name` 與 `bucket_name`。
 
 ```bash
 pnpm install
-pnpm exec wrangler d1 create opencontentcreator          # 把回傳的 database_id 填進 wrangler.jsonc
+pnpm exec wrangler d1 create opencontentcreator
 pnpm exec wrangler r2 bucket create opencontentcreator-media
 ```
 
