@@ -2,6 +2,10 @@
 // 儀表板：最上面一行是待回覆的對話＋這段期間的成效（跟前一段期間比）、哪些貼文表現好、各系列文與各帳號
 const boot = useBoot()
 const days = ref(28)
+// 右上角的平台篩選：所有數字都只算那個平台（待回覆與私訊由伺服器篩，其餘在這裡篩貼文）
+const platform = ref<Platform | 'all'>('all')
+const platforms = computed(() => PLATFORM_KEYS.filter(k => boot.value.accounts.some(a => a.platform === k)))
+const inPlatform = (accountId: number) => platform.value === 'all' || account(accountId)?.platform === platform.value
 const allPosts = ref<InsightPost[]>([]) // 兩倍期間的貼文：後半是這個期間，前半拿來比較
 interface Status { accountId: number, lastSyncedAt: string | null, lastError: string, tokenExpiresAt: string | null }
 const status = ref<Status[]>([])
@@ -22,9 +26,10 @@ const loaded = ref(false)
 const { account } = useLookup()
 
 async function load() {
+  const only = platform.value === 'all' ? {} : { platform: platform.value }
   const [data, list] = await Promise.all([
-    attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value, followers: typeof followers.value }>('/api/insights', { query: { days: days.value } })),
-    attempt(() => api<Series[]>('/api/series')),
+    attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value, followers: typeof followers.value }>('/api/insights', { query: { days: days.value, ...only } })),
+    attempt(() => api<Series[]>('/api/series', { query: only })),
   ])
   if (data) {
     allPosts.value = data.posts
@@ -36,7 +41,7 @@ async function load() {
   series.value = list ?? []
   loaded.value = true
 }
-watch(days, load, { immediate: true })
+watch([days, platform], load, { immediate: true })
 useAutoRefresh(load)
 
 async function sync() {
@@ -64,9 +69,13 @@ const linkErrors = computed(() => status.value.filter(s => s.lastError))
 
 // ---- 這個期間 vs 前一個期間（各自是「那段期間發的貼文」的累計數字）----
 const since = computed(() => new Date(Date.now() - days.value * 86400_000).toISOString())
-const posts = computed(() => allPosts.value.filter(p => p.publishedAt >= since.value))
-const before = computed(() => allPosts.value.filter(p => p.publishedAt < since.value))
-const summary = computed(() => summarizeInsights(posts.value, boot.value))
+const shown = computed(() => allPosts.value.filter(p => inPlatform(p.accountId)))
+const posts = computed(() => shown.value.filter(p => p.publishedAt >= since.value))
+const before = computed(() => shown.value.filter(p => p.publishedAt < since.value))
+const summary = computed(() => {
+  const all = summarizeInsights(posts.value, boot.value)
+  return { ...all, rows: all.rows.filter(r => inPlatform(r.accountId)) }
+})
 const kpis = computed(() => {
   const now = totalsOf(posts.value)
   const prev = totalsOf(before.value)
@@ -104,7 +113,7 @@ const SLOTS = [{ label: '早', from: 5, to: 12 }, { label: '午', from: 12, to: 
 const SHADES = ['#dfe7da', '#b9c9b1', '#7f9a78', '#3e5346']
 const heat = computed(() => {
   const cells = new Map<string, { eng: number, views: number, n: number }>()
-  for (const p of allPosts.value) {
+  for (const p of shown.value) {
     if (!p.views) continue
     const at = taipei(p.publishedAt)
     const hour = Number(at.slice(11, 13))
@@ -133,7 +142,8 @@ const heat = computed(() => {
 })
 
 // ---- 系列文 ----
-const rows = computed(() => series.value.map((s) => {
+// 篩了平台時，那個平台沒有貼文的系列文不列
+const rows = computed(() => series.value.filter(s => platform.value === 'all' || s.posts.length).map((s) => {
   const totals = totalsOf(s.posts)
   return {
     ...s, totals, platforms: [...new Set(s.posts.map(p => account(p.accountId)?.platform).filter(Boolean))] as Platform[],
@@ -153,6 +163,10 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
       <button type="button" class="chip" :aria-pressed="days === 90" @click="days = 90">近 90 天</button>
     </div>
     <div class="row">
+      <div v-if="platforms.length > 1" class="row" role="group" aria-label="平台" style="gap: 6px">
+        <button type="button" class="chip" :aria-pressed="platform === 'all'" @click="platform = 'all'">全部平台</button>
+        <button v-for="k in platforms" :key="k" type="button" class="chip" :aria-pressed="platform === k" :aria-label="PLATFORMS[k].label" :title="PLATFORMS[k].label" @click="platform = k"><PlatformIcon :platform="k" /></button>
+      </div>
       <NuxtLink v-if="todo.failed" :to="todo.failedSeriesId ? `/series/${todo.failedSeriesId}` : '/feed'" class="alert-chip">{{ todo.failed }} 則送出失敗</NuxtLink>
       <a v-if="linkErrors.length" href="/accounts" class="alert-chip" :title="linkErrors[0]?.lastError" @click.prevent="openSetup('accounts')">{{ linkErrors.length }} 個連結異常</a>
       <span v-if="lastSynced" class="small muted">更新於 {{ lastSynced }}</span>
@@ -166,7 +180,7 @@ const perWeek = (n: number) => (n / (days.value / 7)).toFixed(n / (days.value / 
 
   <!-- 一行五格：第一格是要動手的事，後面四格是這段期間的成效。送出失敗、連結異常平常不占位置，有狀況才出現在上面那一列 -->
   <div class="stats">
-    <NuxtLink to="/feed?filter=pending" class="stat stat-link" :class="{ warn: todo.waiting }">
+    <NuxtLink :to="platform === 'all' ? '/feed?filter=pending' : `/feed?filter=pending&platform=${platform}`" class="stat stat-link" :class="{ warn: todo.waiting }">
       <span class="small muted">待回覆的對話</span><b>{{ fmtNum(todo.waiting) }} 串</b>
       <span class="small muted">{{ waitedFor ? `最久的等了 ${waitedFor}` : '都回完了' }}</span>
     </NuxtLink>

@@ -6,15 +6,16 @@ const postColumns = {
   views: accountPosts.views, likes: accountPosts.likes, comments: accountPosts.comments, shares: accountPosts.shares, saves: accountPosts.saves,
 }
 
-/** 這個會員的所有系列文：設定、裡面的貼文與成效（貼文的累計數字）、留言與私訊的次數 */
-export async function loadSeries(uid: number): Promise<Series[]> {
+/** 這個會員的所有系列文：設定、裡面的貼文與成效（貼文的累計數字）、留言與私訊的次數。給 platform 時貼文與次數都只算那個平台的 */
+export async function loadSeries(uid: number, platform?: Platform): Promise<Series[]> {
   const db = useDb()
   const [list, members, counts] = await db.batch([
     db.select().from(collections).where(eq(collections.ownerId, uid)).orderBy(asc(collections.id)),
     db.select({ collectionId: collectionPosts.collectionId, ...postColumns }).from(collectionPosts)
       .innerJoin(collections, eq(collections.id, collectionPosts.collectionId))
       .innerJoin(accountPosts, eq(accountPosts.id, collectionPosts.postId))
-      .where(eq(collections.ownerId, uid)).orderBy(desc(accountPosts.publishedAt)),
+      .innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
+      .where(and(eq(collections.ownerId, uid), platform ? eq(accounts.platform, platform) : undefined)).orderBy(desc(accountPosts.publishedAt)),
     db.select({
       collectionId: comments.collectionId,
       received: sql<number>`sum(case when ${comments.mine} = 0 then 1 else 0 end)`,
@@ -24,7 +25,8 @@ export async function loadSeries(uid: number): Promise<Series[]> {
       replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
       // 私訊失敗時 error 會寫「留言已回覆，但私訊失敗」，那種不算送出
       dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
-    }).from(comments).innerJoin(collections, eq(collections.id, comments.collectionId)).where(eq(collections.ownerId, uid)).groupBy(comments.collectionId),
+    }).from(comments).innerJoin(collections, eq(collections.id, comments.collectionId)).innerJoin(accounts, eq(accounts.id, comments.accountId))
+      .where(and(eq(collections.ownerId, uid), platform ? eq(accounts.platform, platform) : undefined)).groupBy(comments.collectionId),
   ])
   return list.map(({ ownerId: _, cursor: __, createdAt: ___, ...c }) => {
     const n = counts.find(x => x.collectionId === c.id)
@@ -102,13 +104,13 @@ export function loadSeriesComments(seriesId: number) {
 }
 
 /** 儀表板用：期間內自動回覆與私訊送出的次數 */
-export async function replyTotals(uid: number, days: number) {
+export async function replyTotals(uid: number, days: number, platform?: Platform) {
   const since = new Date(Date.now() - days * 86400_000).toISOString()
   const [row] = await useDb().select({
     replied: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.replyText} != '' then 1 else 0 end)`,
     dms: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' and ${comments.error} = '' then 1 else 0 end)`,
     // 有試著送私訊的（包含失敗的），用來算送達率
     dmTried: sql<number>`sum(case when ${comments.status} = 'sent' and ${comments.dmText} != '' then 1 else 0 end)`,
-  }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(and(eq(accounts.ownerId, uid), gte(comments.createdAt, since)))
+  }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(and(eq(accounts.ownerId, uid), gte(comments.createdAt, since), platform ? eq(accounts.platform, platform) : undefined))
   return { replied: row?.replied ?? 0, dms: row?.dms ?? 0, dmTried: row?.dmTried ?? 0 }
 }

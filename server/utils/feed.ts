@@ -60,14 +60,15 @@ export const loadPostReplies = (post: { accountId: number, externalId: string })
  * 儀表板最上面「今天要處理」用的數字：有幾串對話在等回覆、等最久的是什麼時候、有幾則送出失敗，以及各系列文各有幾串在等。
  * 「最後一句是誰說的」用 SQL 算不出來，所以拿組對話需要的欄位回來在這裡算。
  */
-export async function loadTodo(uid: number) {
+export async function loadTodo(uid: number, platform?: Platform) {
   const db = useDb()
   const [rows, names] = await db.batch([
     db.select({
       id: comments.id, accountId: comments.accountId, externalId: comments.externalId, externalPostId: comments.externalPostId,
       parentExternalId: comments.parentExternalId, mine: comments.mine, status: comments.status, createdAt: comments.createdAt,
       collectionId: comments.collectionId, error: comments.error,
-    }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(eq(accounts.ownerId, uid)).orderBy(desc(comments.id)).limit(4000),
+    }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId))
+      .where(and(eq(accounts.ownerId, uid), platform ? eq(accounts.platform, platform) : undefined)).orderBy(desc(comments.id)).limit(4000),
     db.select({ id: collections.id, name: collections.name }).from(collections).where(eq(collections.ownerId, uid)),
   ])
   const waiting = groupConversations(rows).conversations.filter(c => c.waiting)

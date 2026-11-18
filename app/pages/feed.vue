@@ -14,7 +14,8 @@ const replies = ref<CommentRow[]>([])
 
 const platformOf = (p: { accountId: number }) => account(p.accountId)?.platform
 // 平台分頁：只列出真的有貼文的平台
-const platform = ref<Platform | 'all'>('all')
+// 從儀表板篩了平台再點「待回覆的對話」進來會帶 ?platform=
+const platform = ref<Platform | 'all'>(isPlatform(route.query.platform) ? route.query.platform : 'all')
 const platforms = computed(() => PLATFORM_KEYS.filter(k => posts.value.some(p => platformOf(p) === k)))
 const inPlatform = computed(() => posts.value.filter(p => platform.value === 'all' || platformOf(p) === platform.value))
 // 同一個平台連了不只一個帳號時，清單上才需要寫出帳號名稱
