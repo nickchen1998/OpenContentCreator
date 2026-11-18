@@ -7,6 +7,8 @@ const platform = ref<Platform | 'all'>('all')
 const platforms = computed(() => PLATFORM_KEYS.filter(k => boot.value.accounts.some(a => a.platform === k)))
 const inPlatform = (accountId: number) => platform.value === 'all' || account(accountId)?.platform === platform.value
 const allPosts = ref<InsightPost[]>([]) // 兩倍期間的貼文：後半是這個期間，前半拿來比較
+type RecentPost = { accountId: number, publishedAt: string, likes: number, comments: number, shares: number }
+const recent = ref<RecentPost[]>([]) // 不分期間的最近貼文（新的在前），熱度圖用
 interface Status { accountId: number, lastSyncedAt: string | null, lastError: string, tokenExpiresAt: string | null }
 const status = ref<Status[]>([])
 const replies = ref({ replied: 0, dms: 0, dmTried: 0 })
@@ -28,11 +30,12 @@ const { account } = useLookup()
 async function load() {
   const only = platform.value === 'all' ? {} : { platform: platform.value }
   const [data, list] = await Promise.all([
-    attempt(() => api<{ posts: InsightPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value, followers: typeof followers.value }>('/api/insights', { query: { days: days.value, ...only } })),
+    attempt(() => api<{ posts: InsightPost[], recent: RecentPost[], status: Status[], replies: typeof replies.value, todo: typeof todo.value, followers: typeof followers.value }>('/api/insights', { query: { days: days.value, ...only } })),
     attempt(() => api<Series[]>('/api/series', { query: only })),
   ])
   if (data) {
     allPosts.value = data.posts
+    recent.value = data.recent
     status.value = data.status
     replies.value = data.replies
     todo.value = data.todo
@@ -108,37 +111,49 @@ const top = computed(() => {
   })
 })
 
-// ---- 互動最好的發文時段：星期 × 早午晚，格子顏色是那個時段發的貼文的平均互動率 ----
+// ---- 互動最好的發文時段：星期 × 早午晚 ----
+// 不跟著上面的期間走：每個帳號取最近 30 則貼文（發文少的平台也畫得出來）。不用觀看數（舊貼文不會再抓），
+// 每則的互動數先除以同帳號這 30 則的平均，格子是那個時段的平均倍數，不同平台、不同大小的帳號才能放在一起比
+const HEAT_POSTS = 30
 const SLOTS = [{ label: '早', from: 5, to: 12 }, { label: '午', from: 12, to: 18 }, { label: '晚', from: 18, to: 29 }]
 const SHADES = ['#dfe7da', '#b9c9b1', '#7f9a78', '#3e5346']
 const heat = computed(() => {
-  const cells = new Map<string, { eng: number, views: number, n: number }>()
-  for (const p of shown.value) {
-    if (!p.views) continue
-    const at = taipei(p.publishedAt)
-    const hour = Number(at.slice(11, 13))
-    const slot = SLOTS.findIndex(s => (hour < 5 ? hour + 24 : hour) >= s.from && (hour < 5 ? hour + 24 : hour) < s.to)
-    // 凌晨發的算前一天晚上
-    const day = (weekdayIdx(at.slice(0, 10)) + (hour < 5 ? 6 : 0)) % 7
-    const cell = cells.get(`${slot}:${day}`) ?? { eng: 0, views: 0, n: 0 }
-    cells.set(`${slot}:${day}`, { eng: cell.eng + engagementOf(p), views: cell.views + p.views, n: cell.n + 1 })
+  const byAccount = new Map<number, RecentPost[]>()
+  for (const p of recent.value) {
+    if (!inPlatform(p.accountId)) continue
+    const list = byAccount.get(p.accountId) ?? []
+    if (list.length < HEAT_POSTS) byAccount.set(p.accountId, [...list, p])
   }
-  const rates = [...cells.values()].map(c => c.eng / c.views).sort((a, b) => a - b)
-  const level = (r: number) => Math.min(SHADES.length - 1, Math.floor(rates.filter(x => x < r).length / rates.length * SHADES.length))
-  let best = { label: '', rate: 0 }
+  const cells = new Map<string, { score: number, n: number }>()
+  for (const list of byAccount.values()) {
+    const mean = list.reduce((a, p) => a + engagementOf(p), 0) / list.length
+    if (!mean) continue
+    for (const p of list) {
+      const at = taipei(p.publishedAt)
+      const hour = Number(at.slice(11, 13))
+      const slot = SLOTS.findIndex(s => (hour < 5 ? hour + 24 : hour) >= s.from && (hour < 5 ? hour + 24 : hour) < s.to)
+      // 凌晨發的算前一天晚上
+      const day = (weekdayIdx(at.slice(0, 10)) + (hour < 5 ? 6 : 0)) % 7
+      const cell = cells.get(`${slot}:${day}`) ?? { score: 0, n: 0 }
+      cells.set(`${slot}:${day}`, { score: cell.score + engagementOf(p) / mean, n: cell.n + 1 })
+    }
+  }
+  const values = [...cells.values()].map(c => c.score / c.n).sort((a, b) => a - b)
+  const level = (r: number) => Math.min(SHADES.length - 1, Math.floor(values.filter(x => x < r).length / values.length * SHADES.length))
+  let best = { label: '', times: 0 }
   const rows = SLOTS.map((s, si) => ({
     label: s.label,
     cells: WEEKDAYS.map((d, di) => {
       const c = cells.get(`${si}:${di}`)
       if (!c) return { key: `${si}:${di}`, style: 'background: var(--green-faint)', title: `週${d}${s.label}：沒有貼文` }
-      const r = c.eng / c.views
-      if (r > best.rate) best = { label: `週${d}${s.label}`, rate: r }
-      return { key: `${si}:${di}`, style: `background: ${SHADES[level(r)]}`, title: `週${d}${s.label}：${c.n} 則，互動率 ${(r * 100).toFixed(1)}%` }
+      const times = c.score / c.n
+      if (times > best.times) best = { label: `週${d}${s.label}`, times }
+      return { key: `${si}:${di}`, style: `background: ${SHADES[level(times)]}`, title: `週${d}${s.label}：${c.n} 則，互動是平均的 ${times.toFixed(1)} 倍` }
     }),
   }))
   // 貼文太少時格子大多是空的，看了會誤導，不顯示
   const count = [...cells.values()].reduce((a, c) => a + c.n, 0)
-  return { rows, show: count >= 8, summary: best.label ? `各時段的平均互動率，${best.label}最高（${(best.rate * 100).toFixed(1)}%）` : '' }
+  return { rows, show: count >= 8, summary: best.label ? `各帳號最近 ${HEAT_POSTS} 則貼文，${best.label}發的互動最好（平均的 ${best.times.toFixed(1)} 倍）` : '' }
 })
 
 // ---- 系列文 ----
