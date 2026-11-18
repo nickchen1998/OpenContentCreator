@@ -6,7 +6,7 @@ type Connection = typeof connections.$inferSelect
  * 同步一個帳號的貼文與成效：列出最近的貼文（1 個請求，按讚與留言數跟著回來），再替最久沒更新的幾則抓 insight
  * （觀看、分享、收藏；每則 1–2 個請求）。insightBudget 是這次最多替幾則貼文抓 insight，呼叫端用它控制請求數。
  */
-export async function syncAccountPosts(platform: LinkedPlatform, connection: Connection, insightBudget: number, ownerId?: number) {
+export async function syncAccountPosts(platform: LinkedPlatform, connection: Connection, insightBudget: number, ownerId?: number, budget?: SendBudget) {
   const db = useDb()
   const now = nowIso()
   try {
@@ -48,8 +48,8 @@ export async function syncAccountPosts(platform: LinkedPlatform, connection: Con
     ...(remote.length ? [snapshotPostStats(sql`${accountPosts.accountId} = ${connection.accountId} and ${accountPosts.externalId} in (select value from json_each(${JSON.stringify(remote.map(p => p.id))}))`)] : [])])
     // 粉絲數一天記一次（今天記過就不會再打平台）
     const followerError = await recordFollowers(platform, connection, token).catch(e => `讀不到粉絲數：${(e as Error).message}`)
-    // 系列文裡的貼文順便補抓既有留言（只記錄，不自動回覆）
-    const commentError = ownerId != null && (platform === 'instagram' || platform === 'facebook') ? await importSeriesComments(platform, connection, token, ownerId) : ''
+    // 系列文裡的貼文順便補抓留言（加進系列文之前就有的只記錄；之後才留、即時通知漏掉的照常自動送出）
+    const commentError = ownerId != null && (platform === 'instagram' || platform === 'facebook') ? await importSeriesComments(platform, connection, token, ownerId, undefined, budget) : ''
     const lastError = (insightError ? `讀不到觀看數等成效：${insightError}` : commentError || followerError).slice(0, 300)
     await db.update(connections).set({ lastSyncedAt: now, lastError }).where(eq(connections.id, connection.id))
     return { posts: remote.length, error: lastError }
@@ -61,22 +61,29 @@ export async function syncAccountPosts(platform: LinkedPlatform, connection: Con
   }
 }
 
+/** 補抓留言時這次最多自動送出幾則（每則 2 個對外請求）。同一個請求裡的各帳號共用同一份 */
+export interface SendBudget { left: number }
+export const sendBudget = (left = 3): SendBudget => ({ left })
+
 /**
  * 補抓貼文的既有留言（預設是這個帳號最新幾則系列文貼文；給 only 就只抓指定的那幾則）：系列文建立之前就有的留言、或即時通知漏掉的。
- * 跑一樣的規則，但**不自動送出**：命中的會是「待送出」，由會員自己決定要不要回（否則把一篇有上百則留言的貼文
- * 加進系列文，會一口氣對所有人回覆加私訊）。每次最多看 4 則貼文、收 12 則新留言，其餘下次同步再收。
+ * 跑一樣的規則。**貼文加進系列文之前就有的留言不自動送出**：命中的會是「待送出」，由會員自己決定要不要回（否則把一篇有上百則留言的貼文
+ * 加進系列文，會一口氣對所有人回覆加私訊）。晚於加入時間的是即時通知漏掉的新留言，連結開著自動送出就照常送，
+ * 一次最多 budget 則（其餘維持待送出，下次同步不會再送，要會員手動送）。每次最多看 4 則貼文、收 12 則新留言，其餘下次同步再收。
  */
-export async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number, only?: string[]) {
+export async function importSeriesComments(platform: 'instagram' | 'facebook', connection: Connection, token: string, ownerId: number, only?: string[], budget: SendBudget = sendBudget()) {
   const db = useDb()
   try {
+    const inSeries = and(eq(accountPosts.accountId, connection.accountId), only ? inArray(accountPosts.externalId, only) : undefined)
     const [found, seenRows] = await db.batch([
-      db.select({ externalId: accountPosts.externalId }).from(accountPosts)
+      db.select({ externalId: accountPosts.externalId, addedAt: collectionPosts.addedAt }).from(accountPosts)
         .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
-        .where(eq(accountPosts.accountId, connection.accountId)).orderBy(sql`${accountPosts.publishedAt} desc`).limit(4),
+        .where(inSeries).orderBy(sql`${accountPosts.publishedAt} desc`).limit(only ? only.length : 4),
       db.select({ externalId: comments.externalId, text: comments.text }).from(comments)
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId))).orderBy(sql`${comments.id} desc`).limit(1000),
     ])
     // only：只補抓指定的貼文（貼文管理頁點開一則貼文時），不限系列文
+    const addedAt = new Map(found.map(p => [p.externalId, p.addedAt]))
     const targets = only ? only.map(externalId => ({ externalId })) : found
     if (!targets.length) return ''
     // 貼文加進系列文之前就記下的留言，補上所屬的系列文，留言紀錄才看得到
@@ -96,9 +103,15 @@ export async function importSeriesComments(platform: 'instagram' | 'facebook', c
         if (imported >= 12) return ''
         boot ??= await loadBoot(ownerId)
         const input = { accountId: connection.accountId, externalId: c.id, externalPostId: target.externalId, senderId: c.senderId, author: c.author, text: c.text, at: c.at }
-        await (seen.has(c.id) ? reviseComment(boot, input) : processComment(boot, input))
+        const row = await (seen.has(c.id) ? reviseComment(boot, input) : processComment(boot, input))
           .catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
         imported += 1
+        // 貼文加進系列文之後才留的（即時通知漏掉了）：照常自動送出；被編輯過的舊留言不算
+        const added = addedAt.get(target.externalId)
+        if (!seen.has(c.id) && row?.status === 'ready' && connection.autoSend && added && c.at > added && budget.left > 0) {
+          budget.left -= 1
+          await deliver(platform, connection, row)
+        }
       }
     }
     return ''
@@ -108,15 +121,19 @@ export async function importSeriesComments(platform: 'instagram' | 'facebook', c
   }
 }
 
-/** 排程：同步最久沒輪到的幾個帳號。2 個帳號 × (1 + 8 則 × 最多 2 個請求) 在 Free 方案的 50 個對外請求以內 */
+/**
+ * 排程：同步最久沒輪到的幾個帳號。每個帳號：列貼文 1 + insight 6 則 × 最多 2 + 補抓留言 4 + 粉絲數 1（一天一次）= 18，
+ * 兩個帳號再加上共用的自動送出 3 則 × 2，在 Free 方案的 50 個對外請求以內
+ */
 export async function syncStaleAccounts(maxConnections = 2) {
   const due = await useDb().select({ connection: connections, platform: accounts.platform, ownerId: accounts.ownerId }).from(connections)
     .innerJoin(accounts, eq(accounts.id, connections.accountId))
     .orderBy(sql`${connections.lastSyncedAt} is not null`, asc(connections.lastSyncedAt))
     .limit(maxConnections)
+  const budget = sendBudget()
   for (const { connection, platform, ownerId } of due) {
     // 每則貼文的 insight 1–2 個請求、補抓留言每則貼文 1 個，兩個帳號合計壓在 50 個以內
-    if (isLinkedPlatform(platform)) await syncAccountPosts(platform, connection, 6, ownerId)
+    if (isLinkedPlatform(platform)) await syncAccountPosts(platform, connection, 6, ownerId, budget)
   }
 }
 
@@ -264,6 +281,7 @@ export async function importThreadConversations(connection: Connection, ownerId:
  * 系列文成效頁的「立即同步」：只同步這個系列文裡的貼文，不管貼文多舊（排程只顧最近的貼文，舊的由會員手動補）。
  * 每則貼文抓一次成效數字（1–3 個請求），Threads 的再抓整串對話，Instagram／Facebook 的補抓既有留言。
  * Free 方案一個請求最多 50 個對外請求，所以一次最多 8 則（最久沒更新的優先），貼文更多就再按一次。
+ * 補抓到即時通知漏掉的新留言時，整個請求共用最多 3 則自動送出（每則 2 個請求）。
  */
 export async function syncSeries(uid: number, seriesId: number) {
   const db = useDb()
@@ -298,6 +316,7 @@ export async function syncSeries(uid: number, seriesId: number) {
   if (refreshed.length) writes.push(snapshotPostStats(inIdList(accountPosts.id, refreshed)))
   await batchWrites(writes)
   // 留言：同一個帳號的貼文一起處理
+  const budget = sendBudget()
   const byConnection = new Map<number, typeof batch>()
   for (const r of batch) byConnection.set(r.connection!.id, [...(byConnection.get(r.connection!.id) ?? []), r])
   for (const group of byConnection.values()) {
@@ -305,7 +324,7 @@ export async function syncSeries(uid: number, seriesId: number) {
     try {
       const warning = platform === 'threads' || platform === 'youtube'
         ? await importThreadConversations(connection!, uid, group.map(r => ({ id: r.post.externalId, text: r.post.text, inSeries: seriesId })), 4, platform)
-        : await importSeriesComments(platform as 'instagram' | 'facebook', connection!, await tokenOf(connection!), uid)
+        : await importSeriesComments(platform as 'instagram' | 'facebook', connection!, await tokenOf(connection!), uid, undefined, budget)
       if (warning) errors.add(`${connection!.externalName}：${warning}`)
     }
     catch (e) {

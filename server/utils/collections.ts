@@ -81,7 +81,7 @@ export async function setSeriesPosts(uid: number, seriesId: number, value: unkno
   const db = useDb()
   const ids = Array.isArray(value) ? [...new Set(value.map(Number))].filter(n => Number.isInteger(n) && n > 0).slice(0, 200) : []
   const rows = ids.length
-    ? await db.select({ id: accountPosts.id, text: accountPosts.text, seriesId: collectionPosts.collectionId, seriesName: collections.name }).from(accountPosts)
+    ? await db.select({ id: accountPosts.id, text: accountPosts.text, seriesId: collectionPosts.collectionId, seriesName: collections.name, addedAt: collectionPosts.addedAt }).from(accountPosts)
         .innerJoin(accounts, eq(accounts.id, accountPosts.accountId))
         .leftJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .leftJoin(collections, eq(collections.id, collectionPosts.collectionId))
@@ -89,11 +89,13 @@ export async function setSeriesPosts(uid: number, seriesId: number, value: unkno
     : []
   const taken = rows.find(r => r.seriesId != null && r.seriesId !== seriesId)
   if (taken) throw bad(`「${taken.text || '這則貼文'}」已經在系列文「${taken.seriesName}」裡，一則貼文只能屬於一個系列文`)
-  const keep = rows.map(r => r.id)
+  // 原本就在這個系列文裡的沿用加入時間（補抓留言時用它分辨新舊），新加的記成現在
+  const now = nowIso()
+  const keep = rows.map(r => ({ collectionId: seriesId, postId: r.id, addedAt: r.seriesId === seriesId ? (r.addedAt ?? now) : now }))
   const statements = [db.delete(collectionPosts).where(eq(collectionPosts.collectionId, seriesId))]
-  // 每個 statement 最多 100 個參數，一列兩個
-  for (let i = 0; i < keep.length; i += 40) {
-    statements.push(db.insert(collectionPosts).values(keep.slice(i, i + 40).map(postId => ({ collectionId: seriesId, postId }))) as any)
+  // 每個 statement 最多 100 個參數，一列三個
+  for (let i = 0; i < keep.length; i += 30) {
+    statements.push(db.insert(collectionPosts).values(keep.slice(i, i + 30)) as any)
   }
   await batchWrites(statements)
 }

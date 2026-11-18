@@ -174,6 +174,8 @@ export const collections = sqliteTable('collections', {
 export const collectionPosts = sqliteTable('collection_posts', {
   collectionId: integer('collection_id').notNull().references(() => collections.id, { onDelete: 'cascade' }),
   postId: integer('post_id').notNull().references(() => accountPosts.id, { onDelete: 'cascade' }),
+  // 加進系列文的時間（ISO）：同步補抓到的留言晚於這個時間，就是即時通知漏掉的新留言，可以自動送出
+  addedAt: text('added_at'),
 }, t => [primaryKey({ columns: [t.collectionId, t.postId] }), uniqueIndex('collection_posts_post_idx').on(t.postId)])
 
 // 帳號每天的粉絲數（YouTube 是訂閱數）。平台只給「現在是多少」，要自己每天記一筆才算得出增減
