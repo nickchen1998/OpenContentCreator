@@ -127,7 +127,12 @@ export async function receive(boot: OwnedBoot, platform: LinkedPlatform, connect
   }
   const [seen] = await db.select({ id: comments.id }).from(comments)
     .where(and(eq(comments.accountId, connection.accountId), eq(comments.externalId, event.externalId)))
-  if (seen) return // Meta 會重送同一個事件
+  if (seen) {
+    // Meta 會重送同一個事件（文字一樣就什麼都不做）；文字變了是留言被編輯過，沒包含關鍵字的再比一次
+    const revised = await reviseComment(boot, { accountId: connection.accountId, ...event })
+    if (revised?.status === 'ready' && connection.autoSend) await deliver(platform, connection, revised)
+    return
+  }
 
   let row: CommentRecord | undefined
   try {

@@ -62,10 +62,10 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
   const withReply = series.replies.length > 0
   // 回覆與私訊都沒填的系列文：留言照樣記下來（留言紀錄看得到），只是不動作
   if (!withReply && !withDm) return insert({ ...base, status: 'unmatched', reason: series.dmText ? '這個平台不能私訊留言者' : '這個系列文沒有設定回覆' })
-  const text = input.text.toLowerCase()
-  const keyword = series.matchType === 'any' ? '' : keywordsOf(series.keywords).find(k => text.includes(k.toLowerCase()))
+  const text = foldForMatch(input.text)
+  const keyword = series.matchType === 'any' ? '' : keywordsOf(series.keywords).find(k => text.includes(foldForMatch(k)))
   if (series.matchType !== 'any' && !keyword) {
-    return insert({ ...base, status: 'unmatched', reason: '留言沒有包含關鍵字' })
+    return insert({ ...base, status: 'unmatched', reason: NO_KEYWORD })
   }
   if (earlier.length) return insert({ ...base, status: 'skipped', reason: '這個人在這則貼文已經回過' })
   if (boot.rules.replyPerHour > 0 && (recent[0]?.n ?? 0) >= boot.rules.replyPerHour) {
@@ -85,7 +85,35 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
   return created[0]!
 }
 
-export const keywordsOf = (keywords: string) => keywords.split(/[,，、\n]/).map(k => k.trim()).filter(Boolean)
+const NO_KEYWORD = '留言沒有包含關鍵字'
+
+/**
+ * 平台上的留言被編輯過（重新收到同一則、文字不一樣）：更新紀錄裡的文字；原本因為沒包含關鍵字才沒回、
+ * 也還沒有人回過它的，用新的文字重跑一次（例如先留「東京」再改成「東京超市」）。
+ * 沒變、找不到、是自己發的都回傳 undefined；重跑後的紀錄由呼叫端決定要不要送出。
+ */
+export async function reviseComment(boot: OwnedBoot, input: Incoming) {
+  const db = useDb()
+  const [row] = await db.select().from(comments).where(and(eq(comments.accountId, input.accountId), eq(comments.externalId, input.externalId)))
+  if (!row || row.mine || row.text === input.text || !input.text.trim()) return undefined
+  const [answered] = await db.select({ id: comments.id }).from(comments)
+    .where(and(eq(comments.accountId, input.accountId), eq(comments.parentExternalId, input.externalId), eq(comments.mine, true))).limit(1)
+  if (row.status !== 'unmatched' || row.reason !== NO_KEYWORD || answered) {
+    await db.update(comments).set({ text: input.text }).where(eq(comments.id, row.id))
+    return undefined
+  }
+  // 唯一索引是 (account_id, external_id)，要先拿掉舊的才能照一般流程重新記一筆；失敗就把舊的放回去（文字用新的）
+  await db.delete(comments).where(eq(comments.id, row.id))
+  try {
+    return await processComment(boot, { ...input, at: row.createdAt, parentExternalId: row.parentExternalId || undefined })
+  }
+  catch (e) {
+    await db.insert(comments).values({ ...row, text: input.text }).onConflictDoNothing()
+    throw e
+  }
+}
+
+export const keywordsOf =(keywords: string) => keywords.split(/[,，、\n]/).map(k => k.trim()).filter(Boolean)
 
 async function insert(values: typeof comments.$inferInsert) {
   const [row] = await useDb().insert(comments).values(values).returning()

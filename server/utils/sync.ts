@@ -73,7 +73,7 @@ export async function importSeriesComments(platform: 'instagram' | 'facebook', c
       db.select({ externalId: accountPosts.externalId }).from(accountPosts)
         .innerJoin(collectionPosts, eq(collectionPosts.postId, accountPosts.id))
         .where(eq(accountPosts.accountId, connection.accountId)).orderBy(sql`${accountPosts.publishedAt} desc`).limit(4),
-      db.select({ externalId: comments.externalId }).from(comments)
+      db.select({ externalId: comments.externalId, text: comments.text }).from(comments)
         .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId))).orderBy(sql`${comments.id} desc`).limit(1000),
     ])
     // only：只補抓指定的貼文（貼文管理頁點開一則貼文時），不限系列文
@@ -84,17 +84,19 @@ export async function importSeriesComments(platform: 'instagram' | 'facebook', c
       select cp.collection_id from collection_posts cp join account_posts p on p.id = cp.post_id
       where p.account_id = comments.account_id and p.external_id = comments.external_post_id
     ) where account_id = ${connection.accountId} and collection_id is null and external_post_id != ''`)
-    const seen = new Set(seenRows.map(r => r.externalId))
+    const seen = new Map(seenRows.map(r => [r.externalId, r.text]))
     let boot: OwnedBoot | undefined
     let imported = 0
     for (const target of targets) {
       const remote = await listPostComments(platform, token, target.externalId)
       // 自己的留言（包含我們送出的回覆）不算；舊的先處理，「同一個人只回一次」才會算在他最早的那則上
-      const fresh = remote.filter(c => c.text.trim() && !seen.has(c.id) && c.senderId !== connection.externalId && c.author !== `@${connection.externalName}`).reverse()
+      // 收過但文字變了的是被編輯過的留言：交給 reviseComment（一樣不自動送出）
+      const fresh = remote.filter(c => c.text.trim() && seen.get(c.id) !== c.text && c.senderId !== connection.externalId && c.author !== `@${connection.externalName}`).reverse()
       for (const c of fresh) {
         if (imported >= 12) return ''
         boot ??= await loadBoot(ownerId)
-        await processComment(boot, { accountId: connection.accountId, externalId: c.id, externalPostId: target.externalId, senderId: c.senderId, author: c.author, text: c.text, at: c.at })
+        const input = { accountId: connection.accountId, externalId: c.id, externalPostId: target.externalId, senderId: c.senderId, author: c.author, text: c.text, at: c.at }
+        await (seen.has(c.id) ? reviseComment(boot, input) : processComment(boot, input))
           .catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
         imported += 1
       }
@@ -196,10 +198,10 @@ export async function importThreadConversations(connection: Connection, ownerId:
   const db = useDb()
   const token = await unseal(connection.tokenEnc)
   // 已經收過的一次查出來，不要每則查一次（Free 方案每次 50 個 D1 查詢）
-  const stored = await db.select({ externalId: comments.externalId, parentExternalId: comments.parentExternalId, mine: comments.mine }).from(comments)
+  const stored = await db.select({ externalId: comments.externalId, parentExternalId: comments.parentExternalId, mine: comments.mine, text: comments.text }).from(comments)
     .where(and(eq(comments.accountId, connection.accountId), isNotNull(comments.externalId)))
     .orderBy(sql`${comments.id} desc`).limit(2000)
-  const seen = new Set(stored.map(r => r.externalId))
+  const seen = new Map(stored.map(r => [r.externalId, r.text]))
   // 子文：帳號自己接在主文（或另一則子文）下面的貼文。回在子文底下的留言跟回在主文底下的一樣算「留言」
   const parts = new Set<string>()
   for (let grew = true; grew;) {
@@ -236,11 +238,16 @@ export async function importThreadConversations(connection: Connection, ownerId:
         }
         continue
       }
-      if (seen.has(node.id) || handled >= limit) continue
+      if (seen.get(node.id) === node.text || handled >= limit) continue
       handled++
       boot ??= await loadBoot(ownerId)
       const top = parent === '' || parts.has(parent)
       const incoming = { externalId: node.id, senderId: node.senderId || node.username, author: `@${node.username}`, text: node.text, externalPostId: thread.id }
+      // 收過但文字變了：留言被編輯過，沒包含關鍵字的再比一次（只記成待送出，不自動送出）
+      if (seen.has(node.id)) {
+        await reviseComment(boot, { accountId: connection.accountId, ...incoming, parentExternalId: parent, nested: !top })
+        continue
+      }
       // 對話裡的後續回覆只記錄；連結之前就在的舊留言也只記錄、不自動送出（命中系列文設定的會是「待送出」），否則一連結就會對歷史留言洗一輪
       if (top && at > connection.createdAt) await receive(boot, source, connection, { ...incoming, parentExternalId: parent })
       else await processComment(boot, { accountId: connection.accountId, ...incoming, at, parentExternalId: parent, nested: !top }).catch((e) => { if (!/UNIQUE/i.test(String((e as Error)?.cause ?? e))) throw e })
