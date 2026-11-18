@@ -77,21 +77,11 @@ const contextOf = computed(() => {
   return conv.part ? parts.value[conv.part - 1]?.text ?? '' : conv.root.postTitle
 })
 
-// 常用回覆：這串對話所屬系列文的回覆句＋自己最常手動回的幾句。同一個系列文只問一次
-const quick = ref<string[]>([])
-let quickFor: number | null | undefined
-async function loadQuick(seriesId: number | null) {
-  if (quickFor === seriesId) return
-  quickFor = seriesId
-  quick.value = (await api<{ replies: string[] }>('/api/comments/quick', { query: { seriesId: seriesId ?? '' } }).catch(() => ({ replies: [] }))).replies
-}
 const waitingCount = computed(() => grouped.value.conversations.filter(c => c.waiting).length)
 
 function open(key: string) {
   openKey.value = key
   draft.value = ''
-  const conv = grouped.value.conversations.find(c => c.key === key)
-  if (conv) loadQuick(conv.root.collectionId)
 }
 /** 處理完一串之後：跳到清單上下一串待回覆的；都處理完就回到卡片清單 */
 function advance(doneKey: string) {
@@ -115,7 +105,6 @@ async function reply() {
   const key = openKey.value
   // 手動回完如果清單上還有別串在等，就接著處理下一串
   if (await run(() => api(`/api/comments/${target.id}/reply`, { method: 'POST', body: { text: draft.value.trim() } }), '已回覆')) {
-    quickFor = undefined
     advance(key)
   }
 }
@@ -187,9 +176,6 @@ async function dismiss() {
       </li>
     </ol>
     <form v-if="replyTo" class="col shrink" style="gap: 8px" @submit.prevent="reply">
-      <div v-if="quick.length" class="quick-replies" role="group" aria-label="常用回覆">
-        <button v-for="q in quick" :key="q" type="button" class="chip" :title="q" @click="draft = q">{{ q.length > 14 ? `${q.slice(0, 14)}…` : q }}</button>
-      </div>
       <label class="field">回覆 {{ replyTo.author }}
         <textarea v-model="draft" rows="2" maxlength="500" required style="resize: none" />
       </label>

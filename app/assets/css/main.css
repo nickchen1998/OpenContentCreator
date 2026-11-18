@@ -332,9 +332,6 @@ table.compact .bar-track { min-width: 70px; }
 .conv-line li:last-child::after { display: none; }
 .conv-line li.mine .conv-text { align-self: flex-start; padding: 8px 12px; border-radius: var(--radius-field); background: var(--green-soft); }
 
-/* 回覆輸入框上方的常用回覆：最多兩列，多的在裡面捲，不要把輸入框擠出畫面 */
-.quick-replies { display: flex; flex-wrap: wrap; gap: 6px; max-height: 84px; overflow-y: auto; flex: none; }
-.quick-replies .chip { min-height: 32px; padding: 4px 12px; background: var(--green-faint); }
 
 /* ---- 系列文成效頁：漏斗、設定摘要、三欄 ---- */
 .funnel-track { height: 6px; border-radius: var(--radius-pill); background: var(--green-faint); }
