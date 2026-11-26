@@ -63,12 +63,23 @@ export function seriesValues(body: Record<string, unknown>) {
   const replies = (Array.isArray(body.replies) ? body.replies : []).map(r => str(r, '回覆內容', 500, false)).filter(Boolean)
   if (replies.length > 20) throw bad('回覆最多 20 句')
   const dmText = str(body.dmText, '私訊內容', 1000, false)
+  // 連結按鈕：文字與網址要一起填；用按鈕範本送，內文有自己的長度上限
+  const dmButtonText = str(body.dmButtonText, '按鈕文字', DM_BUTTON_TEXT_MAX, false)
+  const dmButtonUrl = str(body.dmButtonUrl, '按鈕連結', 500, false)
+  if (Boolean(dmButtonText) !== Boolean(dmButtonUrl)) throw bad('連結按鈕的文字與網址要一起填')
+  if (dmButtonUrl) {
+    if (!dmText) throw bad('有連結按鈕時要填私訊內容')
+    if (dmText.length > DM_BUTTON_BODY_MAX) throw bad(`有連結按鈕時私訊內容最多 ${DM_BUTTON_BODY_MAX} 個字`)
+    if (!/^https?:\/\/[^\s]+$/i.test(dmButtonUrl) || !URL.canParse(dmButtonUrl)) throw bad('按鈕連結要是 http 或 https 開頭的網址')
+  }
   return {
     name: str(body.name, '系列文名稱', 40),
     matchType,
     keywords: str(body.keywords, '關鍵字', 200, matchType === 'keyword' && (replies.length > 0 || Boolean(dmText))),
     replies,
     dmText,
+    dmButtonText,
+    dmButtonUrl,
     // 沒有開關：回覆與私訊各自有填才做。enabled 是舊欄位，一律寫 true
     enabled: true,
   }

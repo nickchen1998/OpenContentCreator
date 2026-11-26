@@ -25,6 +25,6 @@ export default defineEventHandler(async (event) => {
     reason: '手動回覆', collectionId: row.collectionId, postTitle: row.postTitle,
   })
   // 這則就算回過了；原本選好但還沒送的固定回覆不用再送
-  if (row.status !== 'sent') await db.update(comments).set({ status: 'sent', replyText: '', dmText: '', error: '', reason: '手動回覆' }).where(eq(comments.id, id))
+  if (row.status !== 'sent') await db.update(comments).set({ status: 'sent', replyText: '', dmText: '', dmButtonText: '', dmButtonUrl: '', error: '', reason: '手動回覆' }).where(eq(comments.id, id))
   return { ok: true }
 })

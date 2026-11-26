@@ -156,13 +156,49 @@ export async function replyToComment(platform: LinkedPlatform, token: string, se
   return call(platform, token, platform === 'instagram' ? `/${commentId}/replies` : `/${commentId}/comments`, { method: 'POST', body: { message: text } })
 }
 
-const messageBody = (platform: MetaPlatform, recipient: Record<string, string>, text: string) =>
-  ({ recipient, message: { text }, ...(platform === 'facebook' ? { messaging_type: 'RESPONSE' } : {}) })
+/** 私訊下方的連結按鈕（按鈕範本的 web_url 按鈕） */
+export interface DmButton { text: string, url: string }
+/** 按鈕範本的限制：按鈕文字 20 個字、內文 640 個字 */
+export const DM_BUTTON_TEXT_MAX = 20
+export const DM_BUTTON_BODY_MAX = 640
 
-/** 留言後主動私訊（private reply）：每則留言只能送一次，而且要在留言後 7 天內。Threads 沒有私訊 API */
-export function privateReply(platform: MetaPlatform, token: string, selfId: string, commentId: string, text: string) {
+const messageBody = (platform: MetaPlatform, recipient: Record<string, string>, text: string, button?: DmButton) => ({
+  recipient,
+  message: button
+    ? { attachment: { type: 'template', payload: { template_type: 'button', text, buttons: [{ type: 'web_url', url: button.url, title: button.text }] } } }
+    : { text },
+  ...(platform === 'facebook' ? { messaging_type: 'RESPONSE' } : {}),
+})
+
+/** 沒有連上 Meta（連線失敗、逾時）才重試一次；Meta 明確拒絕的（有 HTTP 狀態）重試也沒用 */
+async function retryOffline<T>(send: () => Promise<T>): Promise<T> {
+  try {
+    return await send()
+  }
+  catch (e) {
+    if (!(e instanceof MetaError) || e.status !== undefined) throw e
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    return send()
+  }
+}
+
+/**
+ * 留言後主動私訊（private reply）：每則留言只能送一次，而且要在留言後 7 天內。Threads 沒有私訊 API。
+ * 有 button 時用按鈕範本送（文字＋一顆連到網址的按鈕）；Meta 不收範本的話退回純文字、網址接在最後，至少訊息送得出去。
+ * 連不上時會重試一次（2026-11 正式環境約 4% 的私訊因此沒送出）；每則留言只收一次私訊，重試不會讓對方收到兩則。
+ */
+export async function privateReply(platform: MetaPlatform, token: string, selfId: string, commentId: string, text: string, button?: DmButton) {
   if (platform === 'threads') throw new MetaError('Threads 不支援私訊')
-  return call(platform, token, `/${selfId}/messages`, { method: 'POST', body: messageBody(platform, { comment_id: commentId }, text) })
+  const send = (body: unknown) => retryOffline(() => call(platform, token, `/${selfId}/messages`, { method: 'POST', body }))
+  if (!button) return send(messageBody(platform, { comment_id: commentId }, text))
+  try {
+    return await send(messageBody(platform, { comment_id: commentId }, text, button))
+  }
+  catch (e) {
+    if (!(e instanceof MetaError) || e.status === undefined) throw e
+    console.warn('private reply template rejected', platform, e.code, e.message)
+    return send(messageBody(platform, { comment_id: commentId }, `${text}\n\n${button.url}`))
+  }
 }
 
 /** 貼文的文字（給留言紀錄顯示用），拿不到就算了 */

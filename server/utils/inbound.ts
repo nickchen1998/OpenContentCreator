@@ -40,14 +40,14 @@ export async function deliver(platform: LinkedPlatform, connection: Connection, 
     // 只私訊、不回留言的：私訊失敗就是整筆失敗，維持待送出可以重送
     // 私訊只有 Instagram 與 Facebook 有；其他平台的紀錄不會帶 dmText
     const dmPlatform = platform as MetaPlatform
-    if (row.dmText && !row.replyText) await privateReply(dmPlatform, token, connection.externalId, row.externalId, row.dmText)
+    if (row.dmText && !row.replyText) await privateReply(dmPlatform, token, connection.externalId, row.externalId, row.dmText, dmButtonOf(row))
     else if (row.dmText) {
-      // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因
+      // 公開回覆已經送出，私訊失敗不重送整筆（重送會再回一次留言），只記下原因；之後可以用 resendDm 單獨補送私訊
       try {
-        await privateReply(dmPlatform, token, connection.externalId, row.externalId, row.dmText)
+        await privateReply(dmPlatform, token, connection.externalId, row.externalId, row.dmText, dmButtonOf(row))
       }
       catch (e) {
-        error = `留言已回覆，但私訊失敗：${messageOf(e)}`
+        error = `${DM_FAILED}${messageOf(e)}`
       }
     }
   }
@@ -59,6 +59,27 @@ export async function deliver(platform: LinkedPlatform, connection: Connection, 
   const [sent] = await db.update(comments).set({ status: 'sent', error }).where(eq(comments.id, row.id)).returning()
   // 送成功了，之前留下的「連結異常」就可以清掉
   if (connection.lastError) await db.update(connections).set({ lastError: '' }).where(eq(connections.id, connection.id))
+  return sent!
+}
+
+/** 留言回了、私訊沒送出去時寫在 comments.error 開頭的字（loadSeries 用「error 不是空的」把這種排除在私訊送出數之外） */
+export const DM_FAILED = '留言已回覆，但私訊失敗：'
+const dmButtonOf = (row: CommentRecord) => (row.dmButtonText && row.dmButtonUrl ? { text: row.dmButtonText, url: row.dmButtonUrl } : undefined)
+/** 這一筆是不是「留言回了、私訊沒送出去」，可以單獨補送私訊 */
+export const dmPending = (row: Pick<CommentRecord, 'status' | 'dmText' | 'error' | 'externalId'>) =>
+  row.status === 'sent' && Boolean(row.dmText) && Boolean(row.externalId) && row.error.startsWith(DM_FAILED)
+
+/** 只補送私訊（留言已經回過，不再回一次）。成功就清掉錯誤；失敗把新的原因記下來並丟出去 */
+export async function resendDm(platform: MetaPlatform, connection: Connection, row: CommentRecord) {
+  const db = useDb()
+  try {
+    await privateReply(platform, await unseal(connection.tokenEnc), connection.externalId, row.externalId!, row.dmText, dmButtonOf(row))
+  }
+  catch (e) {
+    await db.update(comments).set({ error: `${DM_FAILED}${messageOf(e)}` }).where(eq(comments.id, row.id))
+    throw e
+  }
+  const [sent] = await db.update(comments).set({ error: '' }).where(eq(comments.id, row.id)).returning()
   return sent!
 }
 

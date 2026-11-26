@@ -79,6 +79,8 @@ export async function processComment(boot: OwnedBoot, input: Incoming) {
       status: 'ready',
       replyText: withReply ? series.replies[index]! : '',
       dmText: withDm ? series.dmText : '',
+      dmButtonText: withDm ? series.dmButtonText : '',
+      dmButtonUrl: withDm ? series.dmButtonUrl : '',
       reason: `${keyword ? `關鍵字「${keyword}」` : '任何留言'}，${[withReply ? `第 ${index + 1} 句` : '', withDm ? '私訊' : ''].filter(Boolean).join('＋')}`,
     }).returning(),
   ])

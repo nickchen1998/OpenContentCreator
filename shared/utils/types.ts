@@ -48,6 +48,8 @@ export interface CommentRow {
   ruleName: string
   replyText: string
   dmText: string
+  dmButtonText: string
+  dmButtonUrl: string
   reason: string
   status: CommentStatus
   externalId: string | null

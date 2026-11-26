@@ -195,7 +195,7 @@ const partsSummary = computed(() => `各貼文互動組成：${chartRows.value.r
           <dl class="settings-list">
             <dt>條件</dt><dd>{{ condition }}</dd>
             <dt>回覆</dt><dd><template v-if="series.replies.length">{{ series.replies.length }} 句輪流　<span class="muted">{{ series.replies[0] }}</span></template><span v-else class="muted">不回覆</span></dd>
-            <dt>私訊</dt><dd><span v-if="series.dmText">{{ series.dmText }}</span><span v-else class="muted">不私訊</span></dd>
+            <dt>私訊</dt><dd><span v-if="series.dmText">{{ series.dmText }}<template v-if="series.dmButtonUrl"><br>［{{ series.dmButtonText }}］{{ series.dmButtonUrl }}</template></span><span v-else class="muted">不私訊</span></dd>
           </dl>
         </section>
         <section v-if="byPlatform.length" class="card fill" style="gap: 6px">

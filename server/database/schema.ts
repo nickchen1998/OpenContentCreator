@@ -106,6 +106,9 @@ export const comments = sqliteTable('comments', {
   ruleName: text('rule_name').notNull().default(''),
   replyText: text('reply_text').notNull().default(''),
   dmText: text('dm_text').notNull().default(''),
+  // 私訊下方的連結按鈕（送出當下系列文的設定）；兩個都是空字串 = 只送文字
+  dmButtonText: text('dm_button_text').notNull().default(''),
+  dmButtonUrl: text('dm_button_url').notNull().default(''),
   reason: text('reason').notNull().default(''),
   status: text('status').notNull(),
   kind: text('kind').notNull().default('comment'), // comment 留言 | message 私訊
@@ -167,6 +170,9 @@ export const collections = sqliteTable('collections', {
   keywords: text('keywords').notNull().default(''), // 逗號分隔
   replies: text('replies', { mode: 'json' }).$type<string[]>().notNull().default([]), // 公開回覆，多句輪流；空的就是不回覆
   dmText: text('dm_text').notNull().default(''), // 同時私訊留言者的內容；空字串 = 不私訊
+  // 私訊下方的連結按鈕：Instagram 會把自動私訊文字裡的網址藏掉（2026-11-26 會員實際遇到），網址改放按鈕。兩個都有填才帶
+  dmButtonText: text('dm_button_text').notNull().default(''),
+  dmButtonUrl: text('dm_button_url').notNull().default(''),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
   cursor: integer('cursor').notNull().default(0), // 輪替用：下一次要用第幾句
 }, t => [index('collections_owner_idx').on(t.ownerId)])

@@ -7,7 +7,7 @@ const { accounts, account } = useLookup()
 type Candidate = InsightPost & { seriesId: number | null, seriesName: string | null }
 const PAGE_SIZE = 8
 const candidates = ref<Candidate[]>([])
-const form = reactive({ name: '', postIds: [] as number[], matchType: 'any' as 'any' | 'keyword', keywords: '', repliesText: '', dmText: '' })
+const form = reactive({ name: '', postIds: [] as number[], matchType: 'any' as 'any' | 'keyword', keywords: '', repliesText: '', dmText: '', dmButtonText: '', dmButtonUrl: '' })
 const tab = ref<number | 'all'>('all')
 const page = ref(1)
 const error = ref('')
@@ -19,7 +19,7 @@ watch(open, async (value) => {
   const s = props.series
   Object.assign(form, {
     name: s?.name ?? '', postIds: s?.posts.map(p => p.id) ?? [], matchType: s?.matchType ?? 'any', keywords: s?.keywords ?? '',
-    repliesText: s?.replies.join('\n') ?? '', dmText: s?.dmText ?? '',
+    repliesText: s?.replies.join('\n') ?? '', dmText: s?.dmText ?? '', dmButtonText: s?.dmButtonText ?? '', dmButtonUrl: s?.dmButtonUrl ?? '',
   })
   tab.value = 'all'
   page.value = 1
@@ -49,7 +49,7 @@ async function save() {
   const body = {
     name: form.name, postIds: form.postIds, matchType: form.matchType, keywords: form.keywords,
     replies: form.repliesText.split('\n').map(s => s.trim()).filter(Boolean),
-    dmText: form.dmText.trim(),
+    dmText: form.dmText.trim(), dmButtonText: form.dmButtonText.trim(), dmButtonUrl: form.dmButtonUrl.trim(),
   }
   try {
     const id = props.series
@@ -118,11 +118,19 @@ async function remove() {
           <input v-model="form.keywords" type="text" maxlength="200">
         </label>
         <label class="field">回覆留言（一行一句輪流使用，留空就不回覆）
-          <textarea v-model="form.repliesText" rows="4" />
+          <textarea v-model="form.repliesText" rows="3" />
         </label>
         <label class="field">私訊留言者（留空就不私訊）
-          <textarea v-model="form.dmText" rows="4" maxlength="1000" />
+          <textarea v-model="form.dmText" rows="3" maxlength="1000" />
         </label>
+        <div class="dm-button">
+          <label class="field"><span class="pf-row" style="gap: 6px">連結按鈕<InfoTip text="網址放在私訊文字裡，Instagram 有時不會顯示。填在這裡會變成私訊下方一顆可以點的按鈕；兩格都留空就只送文字。" /></span>
+            <input v-model="form.dmButtonText" type="text" maxlength="20" placeholder="按鈕文字" aria-label="連結按鈕的文字">
+          </label>
+          <label class="field">按鈕連結
+            <input v-model="form.dmButtonUrl" type="url" maxlength="500" placeholder="https://" :required="Boolean(form.dmButtonText.trim())">
+          </label>
+        </div>
       </section>
     </div>
 

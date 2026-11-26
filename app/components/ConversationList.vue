@@ -42,7 +42,10 @@ const timeOf = (iso: string) => minutesToAt(Math.floor(Date.parse(iso) / 60000) 
 const whereOf = (index: number) => (index ? `子文 ${index + 1}` : '主文')
 
 // 卡片的狀態：最後一句是對方說的 → 待回覆；按了「不用回」→ 不回（不是已回覆，因為實際上沒有回）
-function stateOf(c: { waiting: boolean, last: CommentRow }) {
+// 留言回了、私訊當時沒送出去（連不上 Meta 等）：可以單獨補送私訊
+const dmFailed = (row: CommentRow) => !row.mine && row.status === 'sent' && Boolean(row.dmText) && row.error.startsWith('留言已回覆，但私訊失敗')
+function stateOf(c: { waiting: boolean, last: CommentRow, rows: CommentRow[] }) {
+  if (c.rows.some(dmFailed)) return { label: '私訊未送出', style: 'background: var(--danger-bg); color: var(--danger)' }
   if (c.waiting) return { label: '待回覆', style: 'background: var(--warn-bg); color: var(--warn)' }
   if (!c.last.mine && c.last.status === 'handled') return { label: '不回', style: 'background: var(--chip-bg); color: var(--muted)' }
   return { label: '已回覆', style: 'background: var(--green-soft); color: var(--green-deep)' }
@@ -53,6 +56,8 @@ function stateOf(c: { waiting: boolean, last: CommentRow }) {
 const TAGS: Record<string, string> = { 自動回覆: '自動留言回覆', 手動回覆: '本站手動回覆' }
 const DM_TAG = '自動私訊寄送'
 const tagOf = (reason: string) => TAGS[reason] ?? reason
+// 私訊帶連結按鈕時，把按鈕接在文字後面一起顯示
+const dmShown = (row: CommentRow) => (row.dmButtonText && row.dmButtonUrl ? `${row.dmText}\n［${row.dmButtonText}］${row.dmButtonUrl}` : row.dmText)
 interface Message { key: string, who: string, at: string, text: string, mine: boolean, tag: string, row?: CommentRow }
 const current = computed(() => grouped.value.conversations.find(c => c.key === openKey.value))
 const messages = computed<Message[]>(() => {
@@ -65,7 +70,7 @@ const messages = computed<Message[]>(() => {
     // 舊紀錄的回覆記在同一筆上，沒有另外一筆「我的回覆」：補一句進來
     const answered = conv.rows.some(r => r.mine && r.parentExternalId === row.externalId)
     if (row.replyText && !answered) out.push({ key: `a${row.id}`, who: '我', at: row.createdAt, text: row.replyText, mine: true, tag: tagOf(row.reason === '手動回覆' ? '手動回覆' : '自動回覆') })
-    if (row.dmText && !row.error) out.push({ key: `d${row.id}`, who: '我', at: row.createdAt, text: row.dmText, mine: true, tag: DM_TAG })
+    if (row.dmText && !row.error) out.push({ key: `d${row.id}`, who: '我', at: row.createdAt, text: dmShown(row), mine: true, tag: DM_TAG })
   }
   return out
 })
@@ -120,6 +125,7 @@ async function reply() {
   }
 }
 const resend = (row: CommentRow) => run(() => api(`/api/comments/${row.id}/send`, { method: 'POST' }), '已送出')
+const resendDm = (row: CommentRow) => run(() => api(`/api/comments/${row.id}/dm`, { method: 'POST' }), '私訊已送出')
 async function dismiss() {
   const last = current.value?.last
   if (!last || last.mine) return
@@ -181,7 +187,10 @@ async function dismiss() {
             <div v-if="m.row.error" class="error">{{ m.row.error }}</div>
             <div class="row"><button type="button" class="btn sm" :disabled="busy" @click="resend(m.row)">{{ m.row.error ? '重送' : '送出回覆' }}</button></div>
           </div>
-          <div v-else-if="m.row.error" class="error">{{ m.row.error }}</div>
+          <div v-else-if="m.row.error" class="col" style="gap: 6px">
+            <div class="error">{{ m.row.error }}</div>
+            <div v-if="dmFailed(m.row)" class="row"><button type="button" class="btn sm" :disabled="busy" @click="resendDm(m.row)">補送私訊</button></div>
+          </div>
         </template>
       </li>
     </ol>

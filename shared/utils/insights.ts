@@ -45,6 +45,8 @@ export interface Series {
   keywords: string
   replies: string[]
   dmText: string
+  dmButtonText: string
+  dmButtonUrl: string
   enabled: boolean
   posts: InsightPost[]
   /** 收到的留言、其中符合回覆條件的、送出失敗的、已回覆、私訊送出的次數 */
