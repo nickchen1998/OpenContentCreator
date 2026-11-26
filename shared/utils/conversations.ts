@@ -10,11 +10,13 @@ export interface ConvRow {
   mine: boolean
   status: string
   createdAt: string
+  /** 留言者的名稱：有帶才能把同一個人的幾則留言併成一串 */
+  author?: string
 }
 
 export interface ConvGroup<T> {
   key: string
-  /** 起頭的那則留言 */
+  /** 起頭的那則留言（同一個人留了好幾則時是最早的那一則） */
   root: T
   /** 回在哪裡：0 是主文，1 以上是第幾則子文（Threads 的串文才有） */
   part: number
@@ -31,6 +33,8 @@ export const needsReply = (row: ConvRow) => !row.mine && row.status !== 'sent' &
 /**
  * rows 可以混著多則貼文。回傳每則貼文的子文串（帳號自己接在主文下面的貼文，照順序）與所有對話（最近有動靜的在前）。
  * 子文：自己發的、而且是回在主文或另一則子文底下。對話的起頭：別人發的、回在主文或子文底下。
+ * 同一個人在同一則貼文（同一則子文）底下留了好幾則，併成同一串：不然重複留言的人會變成好幾張各只有一則的卡片，
+ * 看不出是同一個人，也看不出其中一則其實已經回過（2026-11-26 會員實際遇到）。名稱不明的不併。
  */
 export function groupConversations<T extends ConvRow>(rows: T[]) {
   const byPost = new Map<string, T[]>()
@@ -65,9 +69,17 @@ export function groupConversations<T extends ConvRow>(rows: T[]) {
       }
       return current
     }
+    // 這個人在這一段（主文或某則子文）底下最早的那則留言
+    const firstBy = new Map<string, T>()
+    const UNKNOWN = '（未知）'
     for (const row of list) {
       if (row.externalId && partIndex.has(row.externalId)) continue
-      const root = rootOf(row)
+      let root = rootOf(row)
+      if (!root.mine && root.author && root.author !== UNKNOWN) {
+        const person = `${partIndex.get(root.parentExternalId) ?? 0}:${root.author}`
+        if (!firstBy.has(person)) firstBy.set(person, root)
+        root = firstBy.get(person)!
+      }
       if (!groups.has(root.id)) groups.set(root.id, { key: `${postKey}:${root.id}`, root, part: partIndex.get(root.parentExternalId) ?? 0, rows: [], last: root, waiting: false })
       groups.get(root.id)!.rows.push(row)
     }

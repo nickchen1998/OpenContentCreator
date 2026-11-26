@@ -125,6 +125,8 @@ async function reply() {
   }
 }
 const resend = (row: CommentRow) => run(() => api(`/api/comments/${row.id}/send`, { method: 'POST' }), '已送出')
+// 被「同一個人只回一次」略過的留言：照系列文現在的設定對這一則再送一次（對方說沒收到、沒看到連結時用）
+const applySeries = (row: CommentRow) => run(() => api(`/api/comments/${row.id}/apply`, { method: 'POST' }), '已送出')
 const resendDm = (row: CommentRow) => run(() => api(`/api/comments/${row.id}/dm`, { method: 'POST' }), '私訊已送出')
 async function dismiss() {
   const last = current.value?.last
@@ -186,6 +188,10 @@ async function dismiss() {
             <span class="small wrap-any" style="color: var(--warn)">待送出：{{ m.row.replyText || m.row.dmText }}</span>
             <div v-if="m.row.error" class="error">{{ m.row.error }}</div>
             <div class="row"><button type="button" class="btn sm" :disabled="busy" @click="resend(m.row)">{{ m.row.error ? '重送' : '送出回覆' }}</button></div>
+          </div>
+          <div v-else-if="m.row.status === 'skipped'" class="col" style="gap: 6px">
+            <span class="small muted">沒有自動回：{{ m.row.reason }}</span>
+            <div v-if="m.row.collectionId != null && m.row.externalId" class="row"><button type="button" class="btn sm" :disabled="busy" @click="applySeries(m.row)">照設定送出</button></div>
           </div>
           <div v-else-if="m.row.error" class="col" style="gap: 6px">
             <div class="error">{{ m.row.error }}</div>

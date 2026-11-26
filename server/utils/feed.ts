@@ -16,7 +16,7 @@ export async function loadFeed(uid: number) {
     // 只拿組對話需要的欄位，在這裡算每則貼文有幾串對話、幾串待回覆（「最後一句是誰說的」用 SQL 算不出來）
     db.select({
       id: comments.id, accountId: comments.accountId, externalId: comments.externalId, externalPostId: comments.externalPostId,
-      parentExternalId: comments.parentExternalId, mine: comments.mine, status: comments.status, createdAt: comments.createdAt,
+      parentExternalId: comments.parentExternalId, mine: comments.mine, status: comments.status, createdAt: comments.createdAt, author: comments.author,
     }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId)).where(mine).orderBy(desc(comments.id)).limit(4000),
     db.select({ id: collections.id, name: collections.name }).from(collections).where(eq(collections.ownerId, uid)).orderBy(collections.id),
   ])
@@ -66,7 +66,7 @@ export async function loadTodo(uid: number, platform?: Platform) {
     db.select({
       id: comments.id, accountId: comments.accountId, externalId: comments.externalId, externalPostId: comments.externalPostId,
       parentExternalId: comments.parentExternalId, mine: comments.mine, status: comments.status, createdAt: comments.createdAt,
-      collectionId: comments.collectionId, error: comments.error,
+      collectionId: comments.collectionId, error: comments.error, author: comments.author,
     }).from(comments).innerJoin(accounts, eq(accounts.id, comments.accountId))
       .where(and(eq(accounts.ownerId, uid), platform ? eq(accounts.platform, platform) : undefined)).orderBy(desc(comments.id)).limit(4000),
     db.select({ id: collections.id, name: collections.name }).from(collections).where(eq(collections.ownerId, uid)),
